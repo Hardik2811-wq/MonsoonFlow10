@@ -459,8 +459,9 @@ export const IndiaClimateMap: React.FC = () => {
     xctx.fillText(label, Math.round(dx1) - tw - 6, Math.round(dy1) - 5);
     xctx.restore();
 
-    // Active shock footprint
+    // Active shock footprint (clipped to right/shock half in SPLIT view so left stays pure baseline)
     xctx.save();
+    if (viewMode === 'SPLIT') clipSide(xctx, 'right', w, h);
     xctx.strokeStyle = '#38BDF8';
     xctx.fillStyle = 'rgba(2, 132, 199, 0.10)';
     xctx.lineWidth = 1.5;

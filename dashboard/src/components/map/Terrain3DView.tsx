@@ -282,8 +282,13 @@ function drawStaticDrapedCanvas(
     ctx.restore();
   }
 
-  // 5. Active shock footprint draped onto terrain
+  // 5. Active shock footprint draped onto terrain (clipped to right/shock half in SPLIT view)
   ctx.save();
+  if (viewMode === 'SPLIT') {
+    ctx.beginPath();
+    ctx.rect(TEX_W / 2, 0, TEX_W / 2, TEX_H);
+    ctx.clip();
+  }
   ctx.strokeStyle = '#38BDF8';
   ctx.fillStyle = 'rgba(2, 132, 199, 0.14)';
   ctx.lineWidth = 2.2;

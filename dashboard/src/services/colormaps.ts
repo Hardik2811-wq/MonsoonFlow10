@@ -132,7 +132,7 @@ export function getColorForChannel(value: number, channel: ChannelId): RgbColor 
   return evaluateStops(v, PALETTES[channel]);
 }
 
-const FIELD_ALPHA = 0.5;
+const FIELD_ALPHA = 0.36;
 
 /** Palette colour + transparency rule for a physical value. */
 export function channelRgba(value: number, channel: ChannelId): RgbaColor {

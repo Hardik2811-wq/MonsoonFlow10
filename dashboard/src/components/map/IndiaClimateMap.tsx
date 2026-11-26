@@ -32,6 +32,7 @@ import { WindFlow, drawWindArrows, type WindField } from '../../services/windFlo
 import { latLonToGrid, wireToDisplay, displayDeltaString } from '../../services/physicalUnits';
 import { ColorbarLegend } from './ColorbarLegend';
 import { ChannelSelector } from './ChannelSelector';
+import { Terrain3DView } from './Terrain3DView';
 import { Box, Crosshair, Grid3x3, Mountain, Spline, Waves, Wind } from 'lucide-react';
 
 interface HoverInfo {
@@ -600,28 +601,51 @@ export const IndiaClimateMap: React.FC = () => {
     }
   };
 
-  // ---- Hover inspector ----------------------------------------------------------------------
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
-    const pt = toContainerPoint(e.clientX, e.clientY);
-    const latLng = pt ? map.containerPointToLatLng(pt) : null;
-    const grid = latLng ? latLonToGrid(latLng.lat, latLng.lng) : null;
-    if (latLng && grid) {
+  // ---- Hover inspector & 3D callbacks --------------------------------------------------------
+  const setHoverFromLatLon = useCallback(
+    (lat: number | null, lon: number | null) => {
+      if (lat === null || lon === null) {
+        setHoverInfo(null);
+        return;
+      }
+      const grid = latLonToGrid(lat, lon);
+      if (!grid) {
+        setHoverInfo(null);
+        return;
+      }
       const baseVal = currentBaselineGrid[grid.i][grid.j];
       const shockVal = currentShockGrid[grid.i][grid.j];
       setHoverInfo({
-        lat: Math.round(latLng.lat * 10) / 10,
-        lon: Math.round(latLng.lng * 10) / 10,
+        lat: Math.round(lat * 10) / 10,
+        lon: Math.round(lon * 10) / 10,
         gridI: grid.i,
         gridJ: grid.j,
         baseVal,
         shockVal,
         delta: shockVal - baseVal,
       });
-    } else {
-      setHoverInfo(null);
-    }
+    },
+    [currentBaselineGrid, currentShockGrid]
+  );
+
+  const handleBrushLatLon = useCallback(
+    (lat: number, lon: number) => {
+      if (!isBrushMode) return;
+      if (lat >= GRID_CONFIG.latMin && lat <= GRID_CONFIG.latMax && lon >= GRID_CONFIG.lonMin && lon <= GRID_CONFIG.lonMax) {
+        updateCustomSpec({ centerLat: Math.round(lat * 10) / 10, centerLon: Math.round(lon * 10) / 10 });
+      }
+    },
+    [isBrushMode, updateCustomSpec]
+  );
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (tilt && staticFields) return; // handled by Terrain3DView raycaster
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    const pt = toContainerPoint(e.clientX, e.clientY);
+    const latLng = pt ? map.containerPointToLatLng(pt) : null;
+    if (latLng) setHoverFromLatLon(latLng.lat, latLng.lng);
+    else setHoverInfo(null);
   };
 
   const toggleBtn = (active: boolean) =>
@@ -639,14 +663,14 @@ export const IndiaClimateMap: React.FC = () => {
       onMouseLeave={() => setHoverInfo(null)}
       onClick={handleTiltedClick}
     >
-      {/* Tiltable stage: basemap + data canvases move together */}
+      {/* 2D Leaflet stage (untouched when 3D is off) */}
       <div
         ref={stageRef}
         className="absolute inset-0 transition-transform duration-500 ease-out"
         style={{
-          transform: tilt ? STAGE_TRANSFORM : 'none',
+          transform: tilt && !staticFields ? STAGE_TRANSFORM : 'none',
           transformOrigin: '50% 50%',
-          boxShadow: tilt ? '0 30px 80px rgba(0, 0, 0, 0.7)' : 'none',
+          boxShadow: tilt && !staticFields ? '0 30px 80px rgba(0, 0, 0, 0.7)' : 'none',
         }}
       >
         {/* Leaflet in its own stacking context so its z-index 400 panes stay below the overlays */}
@@ -661,8 +685,25 @@ export const IndiaClimateMap: React.FC = () => {
         <canvas ref={windCanvasRef} className="absolute inset-0 pointer-events-none z-[12]" />
       </div>
 
-      {/* Atmospheric depth haze toward the horizon when tilted */}
-      {tilt && (
+      {/* True 3D Terrain Heightfield (Three.js + orography_m + draped live field) */}
+      {tilt && staticFields && (
+        <Terrain3DView
+          staticFields={staticFields}
+          fieldImages={fieldImages}
+          smooth={smooth}
+          contourLayers={contourLayers}
+          showGridLines={showGridLines}
+          viewMode={viewMode}
+          activePreset={activePreset}
+          customSpec={customSpec}
+          isBrushMode={isBrushMode}
+          onHoverLatLon={setHoverFromLatLon}
+          onBrushLatLon={handleBrushLatLon}
+        />
+      )}
+
+      {/* Atmospheric depth haze toward the horizon only for fallback CSS tilt */}
+      {tilt && !staticFields && (
         <div className="absolute inset-x-0 top-0 h-2/5 z-[15] pointer-events-none bg-gradient-to-b from-[#050505] via-[#050505]/60 to-transparent" />
       )}
 
@@ -701,14 +742,14 @@ export const IndiaClimateMap: React.FC = () => {
             <Grid3x3 className="w-3.5 h-3.5" />
             <span>GRID</span>
           </button>
-          <button onClick={() => setTilt((p) => !p)} className={toggleBtn(tilt)} title="3D perspective tilt (pan/zoom locked while tilted)">
+          <button onClick={() => setTilt((p) => !p)} className={toggleBtn(tilt)} title="True 3D terrain elevation (orography_m) — drag to orbit, scroll to zoom">
             <Box className="w-3.5 h-3.5" />
             <span>3D</span>
           </button>
         </div>
         {tilt && (
-          <div className="px-2 py-0.5 rounded bg-black/30 backdrop-blur-2xl backdrop-saturate-150 border border-white/[0.12] text-[10px] font-mono text-zinc-500">
-            3D view · pan/zoom locked · inspector &amp; brush active
+          <div className="px-2 py-0.5 rounded bg-black/30 backdrop-blur-2xl backdrop-saturate-150 border border-white/[0.12] text-[10px] font-mono text-zinc-400">
+            3D terrain (orography_m) · drag to orbit · scroll to zoom · inspector &amp; brush active
           </div>
         )}
         {isAnomaly && windMode !== 'OFF' && windFields.deltaPeak > 1e-3 && (

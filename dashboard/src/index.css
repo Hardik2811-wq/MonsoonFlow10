@@ -30,6 +30,10 @@
   font-family: inherit;
 }
 
+.leaflet-tile-pane {
+  filter: contrast(1.22) brightness(1.18);
+}
+
 .leaflet-bar a {
   background-color: rgba(0, 0, 0, 0.6) !important;
   border-color: rgba(255, 255, 255, 0.08) !important;

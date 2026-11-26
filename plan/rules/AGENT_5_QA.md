@@ -17,6 +17,7 @@
 ### Strictly Forbidden (Do NOT Modify):
 - Read-only access to `models/`, `training/`, `data/`, `serve.py`, and `dashboard/`.
 - **NEVER modify model weights or backend logic to make a test pass.**
+- **NEVER run `graphify update` or modify `graphify-out/` (Exclusively owned by Agent 1: Lead-Orchestrator).**
 - Report exact numerical findings and failures objectively to the appropriate specialist agent.
 
 ---

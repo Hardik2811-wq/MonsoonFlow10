@@ -11,7 +11,7 @@
 
 ### Permitted Directories (Read & Write):
 - `serve.py` (**CRITICAL: Must live at the REPOSITORY ROOT!**)
-- `inference/` (`predictor.py`, `benchmark.py`, `loader.py`)
+- `inference/` (`predictor.py`, `benchmark.py`, `loader.py`, `schemas.py`)
 - `agent_talk/AGENT_3_BACKEND.md` (Your dedicated progress & handoff log)
 
 ### Strictly Forbidden (Do NOT Create or Modify):
@@ -20,6 +20,7 @@
 - `dashboard/` (Owned exclusively by Agent 4: Agent-Frontend)
 - `tests/` and `evaluation/` (Owned exclusively by Agent 5: Agent-QA)
 - **NEVER move `serve.py` into `server/` or any subfolder.**
+- **NEVER run `graphify update` or modify `graphify-out/` (Exclusively owned by Agent 1: Lead-Orchestrator).**
 
 ---
 

@@ -14,15 +14,22 @@ Every Antigravity agent operating in this repository MUST strictly respect its e
 
 | Agent | Identity & Role | Exclusive Write Ownership | Forbidden Actions |
 | :--- | :--- | :--- | :--- |
-| **Agent 1** | **Lead-Orchestrator** (Current session) | `CLAUDE.md`, `AGENTS.md`, `README.md`, `plan/`, `docs/`, `agent_talk/AGENT_1_LEAD.md`, `project_brief.pdf` | Does not touch model math or frontend directly |
-| **Agent 2** | **Agent-ML** (Data & Modeling) | `data/`, `models/`, `training/`, `checkpoints/`, `agent_talk/AGENT_2_ML.md` | Never touches `serve.py` or `dashboard/`; no raw `.nc` in git; no external APIs |
-| **Agent 3** | **Agent-Backend** (Serving & CPU) | `serve.py` (ROOT!), `inference/`, `agent_talk/AGENT_3_BACKEND.md` | Must keep `serve.py` at root; never touches `models/` or `dashboard/`; no date literals |
-| **Agent 4** | **Agent-Frontend** (Digital Twin UI) | `dashboard/`, `agent_talk/AGENT_4_FRONTEND.md` | Strictly within `dashboard/`; never touches ANY Python file (*.py); strictly no AI slop |
-| **Agent 5** | **Agent-QA** (Auditor & Grader) | `tests/`, `evaluation/`, `agent_talk/AGENT_5_QA.md` | Read-only on rest of repo; never modifies model code or weights to make tests pass |
+| **Agent 1** | **Lead-Orchestrator** (Current session) | `CLAUDE.md`, `AGENTS.md`, `README.md`, `plan/`, `docs/`, `agent_talk/AGENT_1_LEAD.md`, `graphify-out/`, `project_brief.pdf` | Does not touch model math or frontend directly |
+| **Agent 2** | **Agent-ML** (Data & Modeling) | `data/`, `models/`, `training/`, `checkpoints/`, `agent_talk/AGENT_2_ML.md` | Never touches `serve.py`, `dashboard/`, or `graphify`; no raw `.nc` in git; no external APIs |
+| **Agent 3** | **Agent-Backend** (Serving & CPU) | `serve.py` (ROOT!), `inference/`, `agent_talk/AGENT_3_BACKEND.md` | Must keep `serve.py` at root; never touches `models/`, `dashboard/`, or `graphify`; no date literals |
+| **Agent 4** | **Agent-Frontend** (Digital Twin UI) | `dashboard/`, `agent_talk/AGENT_4_FRONTEND.md` | Strictly within `dashboard/`; never touches ANY Python file (*.py) or `graphify`; strictly no AI slop |
+| **Agent 5** | **Agent-QA** (Auditor & Grader) | `tests/`, `evaluation/`, `agent_talk/AGENT_5_QA.md` | Read-only on rest of repo; never modifies model code, server, or `graphify` |
 
 ---
 
-## 2. Mandatory Asynchronous Communication Protocol (`agent_talk/`)
+## 2. Graphify Knowledge Graph Ownership Rule (STRICT)
+
+- **EXCLUSIVELY OWNED BY AGENT 1:** Only **Agent 1 (Lead-Orchestrator)** is authorized to run `graphify update .` or modify `graphify-out/`.
+- **FORBIDDEN FOR ALL OTHER AGENTS:** Agents 2, 3, 4, and 5 must **NEVER execute `graphify update`** or touch `graphify-out/`. Agent 1 maintains the AST graph at milestone checkpoints.
+
+---
+
+## 3. Mandatory Asynchronous Communication Protocol (`agent_talk/`)
 
 Since all 5 Antigravity sessions run independently, agents coordinate via the shared blackboard in `agent_talk/`:
 
@@ -32,7 +39,7 @@ Since all 5 Antigravity sessions run independently, agents coordinate via the sh
 
 ---
 
-## 3. Non-Negotiable Competition Constraints
+## 4. Non-Negotiable Competition Constraints
 
 1. **Root Serving Entrypoint:**
    - `serve.py` MUST live at the **repository root** (never in `server/` or a subfolder).
@@ -56,7 +63,7 @@ Since all 5 Antigravity sessions run independently, agents coordinate via the sh
 
 ---
 
-## 4. Definition of Done (Executable Gates)
+## 5. Definition of Done (Executable Gates)
 
 No task is considered complete until it passes the official kit verification commands:
 1. `python -m monsoon_r1.schema_validator http://localhost:8000`

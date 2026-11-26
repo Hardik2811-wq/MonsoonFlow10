@@ -21,6 +21,7 @@
 - `inference/` (Owned exclusively by Agent 3: Agent-Backend)
 - `dashboard/` (Owned exclusively by Agent 4: Agent-Frontend)
 - `tests/` and `evaluation/` (Owned exclusively by Agent 5: Agent-QA)
+- **NEVER run `graphify update` or modify `graphify-out/` (Exclusively owned by Agent 1: Lead-Orchestrator).**
 
 ---
 

@@ -17,6 +17,7 @@
 - **NEVER touch ANY Python file (`*.py`) anywhere in the repository.**
 - Never modify `serve.py`, `models/`, `training/`, `data/`, or `checkpoints/`.
 - Communicate with backend **solely** via HTTP calls to `http://localhost:8000`.
+- **NEVER run `graphify update` or modify `graphify-out/` (Exclusively owned by Agent 1: Lead-Orchestrator).**
 
 ---
 

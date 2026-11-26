@@ -7,13 +7,12 @@
 
 ---
 
-## 1. Graphify Knowledge Graph Rules
+## 1. Graphify Knowledge Graph Rules (AGENT 1 ONLY)
 - This project is equipped with `graphify`.
-- When `graphify-out/graph.json` exists, for codebase and architecture questions, run `graphify query "<question>"` (CLI) or inspect `graphify-out/GRAPH_REPORT.md` first before reading entire trees of files.
-- To trace relationships between modules, use `graphify path "<A>" "<B>"`.
-- To inspect a single module or class hub, use `graphify explain "<concept>"`.
-- Git hooks (`post-commit` and `post-checkout`) and merge drivers are registered.
-- After substantial code modifications, run `graphify update .` to update the AST graph without API cost.
+- **STRICT OWNERSHIP:** Only **Agent 1: Lead-Orchestrator** is allowed to run `graphify update .` or modify `graphify-out/`.
+- **Agents 2, 3, 4, 5 MUST NEVER run `graphify update`**.
+- To query architecture without modifying the graph, agents may run `graphify query "<question>"`.
+- After substantial code milestones, Agent 1 will run `graphify update .` to keep the AST graph current.
 
 ---
 
@@ -28,11 +27,11 @@
 
 | Agent | Responsibility | Exclusive File Ownership | Constraints |
 | :--- | :--- | :--- | :--- |
-| **Agent 1: Lead-Orchestrator** | Coordination, scoring gates, briefing | `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `README.md`, `plan/`, `docs/`, `agent_talk/AGENT_1_LEAD.md`, `project_brief.pdf` | Does not touch model math or frontend directly |
-| **Agent 2: Agent-ML** | Data pipeline, MF10 architecture, GPU training | `data/`, `models/`, `training/`, `checkpoints/`, `agent_talk/AGENT_2_ML.md` | Never touches `serve.py` or `dashboard/`; no raw `.nc` in git; no external weather APIs |
-| **Agent 3: Agent-Backend** | Fast offline inference, REST API | `serve.py`, `inference/`, `agent_talk/AGENT_3_BACKEND.md` | Must keep `serve.py` at root; CPU execution $\le 5.0$s; physical units on wire; no datetime literals |
-| **Agent 4: Agent-Frontend** | Interactive React 19 UI, map, shocks | `dashboard/`, `agent_talk/AGENT_4_FRONTEND.md` | Strictly within `dashboard/`; communicates via HTTP to backend; strictly no AI slop |
-| **Agent 5: Agent-QA** | Independent evaluation & audit | `tests/`, `evaluation/`, `agent_talk/AGENT_5_QA.md` | Read-only on `models/`, `serve.py`; never modifies weights to pass tests |
+| **Agent 1: Lead-Orchestrator** | Coordination, scoring gates, briefing, Graphify | `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, `README.md`, `plan/`, `docs/`, `agent_talk/AGENT_1_LEAD.md`, `graphify-out/`, `project_brief.pdf` | Does not touch model math or frontend directly |
+| **Agent 2: Agent-ML** | Data pipeline, MF10 architecture, GPU training | `data/`, `models/`, `training/`, `checkpoints/`, `agent_talk/AGENT_2_ML.md` | Never touches `serve.py`, `dashboard/`, or `graphify`; no raw `.nc` in git; no external weather APIs |
+| **Agent 3: Agent-Backend** | Fast offline inference, REST API | `serve.py`, `inference/`, `agent_talk/AGENT_3_BACKEND.md` | Must keep `serve.py` at root; never touches `models/`, `dashboard/`, or `graphify`; no datetime literals |
+| **Agent 4: Agent-Frontend** | Interactive React 19 UI, map, shocks | `dashboard/`, `agent_talk/AGENT_4_FRONTEND.md` | Strictly within `dashboard/`; never touches ANY Python file (*.py) or `graphify`; strictly no AI slop |
+| **Agent 5: Agent-QA** | Independent evaluation & audit | `tests/`, `evaluation/`, `agent_talk/AGENT_5_QA.md` | Read-only on `models/`, `serve.py`, and `graphify`; never modifies weights to pass tests |
 
 ---
 

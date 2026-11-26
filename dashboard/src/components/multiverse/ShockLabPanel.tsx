@@ -1,0 +1,209 @@
+/**
+ * ShockLabPanel.tsx - Multiverse Counterfactual Perturbation Laboratory
+ */
+
+import React from 'react';
+import { SHOCK_PRESETS } from '../../types/shocks';
+import { useShockLab } from '../../context/ShockLabContext';
+import { CHANNEL_LIST } from '../../types/climate';
+import { AlertTriangle, CheckCircle, Paintbrush, RefreshCw, Sliders } from 'lucide-react';
+
+export const ShockLabPanel: React.FC = () => {
+  const {
+    activePresetId,
+    customSpec,
+    isBrushMode,
+    boundsReport,
+    selectPreset,
+    updateCustomSpec,
+    toggleBrushMode,
+    resetShock,
+  } = useShockLab();
+
+  return (
+    <div className="w-80 h-full bg-[#111827] border-r border-[#1E293B] p-4 flex flex-col justify-between overflow-y-auto select-none font-mono text-xs">
+      <div>
+        {/* Panel Header */}
+        <div className="flex items-center justify-between border-b border-[#1E293B] pb-2 mb-4">
+          <div className="flex items-center gap-2">
+            <Sliders className="w-4 h-4 text-sky-400" />
+            <span className="font-semibold text-slate-100 tracking-wider">
+              SHOCK LAB
+            </span>
+          </div>
+          <button
+            onClick={resetShock}
+            className="text-[11px] text-slate-400 hover:text-slate-200 flex items-center gap-1 hover:underline"
+          >
+            <RefreshCw className="w-3 h-3" />
+            <span>RESET (P=0)</span>
+          </button>
+        </div>
+
+        {/* Counterfactual Presets */}
+        <div className="mb-5">
+          <span className="text-slate-400 block mb-2 font-medium">PRESET SHOCKS</span>
+          <div className="space-y-1.5">
+            {SHOCK_PRESETS.map((preset) => {
+              const isSelected = activePresetId === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  onClick={() => selectPreset(preset.id)}
+                  className={`w-full text-left p-2 rounded border transition-colors ${
+                    isSelected
+                      ? 'bg-[#1E293B] border-sky-500 text-sky-300'
+                      : 'bg-[#0B0F17] border-[#1E293B] text-slate-300 hover:border-slate-700'
+                  }`}
+                >
+                  <div className="flex justify-between items-center mb-0.5">
+                    <span className="font-semibold text-slate-100">{preset.name}</span>
+                    <span className="text-[10px] px-1 rounded bg-slate-800 text-slate-400">
+                      {preset.category}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
+                    {preset.description}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Custom 2D Gaussian Shock Brush */}
+        <div className="mb-5 border-t border-[#1E293B] pt-4">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-slate-400 font-medium">INTERACTIVE GAUSSIAN BRUSH</span>
+            <button
+              onClick={toggleBrushMode}
+              className={`px-2 py-1 rounded border flex items-center gap-1 transition-colors ${
+                isBrushMode
+                  ? 'bg-sky-600 border-sky-400 text-white font-medium'
+                  : 'bg-[#0B0F17] border-[#1E293B] text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <Paintbrush className="w-3 h-3" />
+              <span>{isBrushMode ? 'BRUSH ACTIVE' : 'PAINT SHOCK'}</span>
+            </button>
+          </div>
+
+          <div className="space-y-3 bg-[#0B0F17] p-2.5 rounded border border-[#1E293B] tabular-nums">
+            {/* Target Channel */}
+            <div>
+              <label className="text-[11px] text-slate-400 block mb-1">
+                TARGET CHANNEL
+              </label>
+              <select
+                value={customSpec.channel}
+                onChange={(e) => updateCustomSpec({ channel: e.target.value as any })}
+                className="w-full bg-[#111827] border border-[#1E293B] rounded p-1 text-slate-200 font-mono text-xs"
+              >
+                {CHANNEL_LIST.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.id.toUpperCase()} - {c.label} ({c.wireUnit})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Shock Center (Lat, Lon) */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[11px] text-slate-400 block mb-0.5">
+                  CENTER LAT
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="6.5"
+                  max="37.5"
+                  value={customSpec.centerLat}
+                  onChange={(e) => updateCustomSpec({ centerLat: parseFloat(e.target.value) || 20 })}
+                  className="w-full bg-[#111827] border border-[#1E293B] rounded p-1 text-slate-200 font-mono"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] text-slate-400 block mb-0.5">
+                  CENTER LON
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="65.5"
+                  max="100.5"
+                  value={customSpec.centerLon}
+                  onChange={(e) => updateCustomSpec({ centerLon: parseFloat(e.target.value) || 80 })}
+                  className="w-full bg-[#111827] border border-[#1E293B] rounded p-1 text-slate-200 font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Perturbation Magnitude */}
+            <div>
+              <div className="flex justify-between text-[11px] text-slate-400 mb-0.5">
+                <span>AMPLITUDE (Δ)</span>
+                <span className="text-sky-400 font-semibold">
+                  {customSpec.magnitude > 0 ? `+${customSpec.magnitude}` : customSpec.magnitude}
+                </span>
+              </div>
+              <input
+                type="range"
+                min="-15"
+                max="30"
+                step="0.5"
+                value={customSpec.magnitude}
+                onChange={(e) => updateCustomSpec({ magnitude: parseFloat(e.target.value) })}
+                className="w-full h-1 bg-[#1E293B] rounded appearance-none cursor-pointer"
+              />
+            </div>
+
+            {/* Gaussian Radius & Sigma */}
+            <div>
+              <div className="flex justify-between text-[11px] text-slate-400 mb-0.5">
+                <span>GAUSSIAN SIGMA (σ)</span>
+                <span className="text-slate-200">{customSpec.sigmaKm} km</span>
+              </div>
+              <input
+                type="range"
+                min="100"
+                max="600"
+                step="25"
+                value={customSpec.sigmaKm}
+                onChange={(e) => updateCustomSpec({ sigmaKm: parseInt(e.target.value, 10) })}
+                className="w-full h-1 bg-[#1E293B] rounded appearance-none cursor-pointer"
+              />
+              <span className="text-[10px] text-slate-500 mt-0.5 block">
+                σ ≈ 300 km (~2.5 grid cells) prevents high-frequency noise spikes.
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Physical Realism & Causality Validation Gate */}
+      <div className="border-t border-[#1E293B] pt-3">
+        {boundsReport.isValid ? (
+          <div className="flex items-center gap-2 p-2 rounded bg-emerald-950/30 border border-emerald-800/40 text-emerald-400">
+            <CheckCircle className="w-4 h-4 flex-shrink-0" />
+            <span className="text-[11px]">
+              Within Physical Bounds: Perturbation preserves atmospheric stability.
+            </span>
+          </div>
+        ) : (
+          <div className="p-2 rounded bg-amber-950/40 border border-amber-800/50 text-amber-300">
+            <div className="flex items-center gap-1.5 font-semibold text-[11px] mb-1">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+              <span>PHYSICAL BOUNDS ADVISORY</span>
+            </div>
+            {boundsReport.warnings.map((w, idx) => (
+              <p key={idx} className="text-[10px] text-amber-400/90 leading-tight">
+                • {w}
+              </p>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};

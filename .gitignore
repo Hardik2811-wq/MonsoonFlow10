@@ -1,0 +1,75 @@
+# ==============================================================================
+# Git Ignore Rules — MonsoonFlow10 (DevFORGE Track 2)
+# Strictly excludes internal swarm talk, AST knowledge graphs, node_modules,
+# and heavy NetCDF datasets to guarantee repository size remains < 2.0 GB.
+# ==============================================================================
+
+# --- Internal Agent Swarm & AST Graph Files (DO NOT COMMIT) ---
+agent_talk/
+graphify-out/
+.agents/
+resources/
+
+# --- Climate Datasets & Binary NetCDF Archives (DO NOT COMMIT) ---
+*.nc
+*.nc4
+*.grib
+*.grib2
+*.zarr
+*.h5
+*.hdf5
+data/raw/
+
+# --- Python Build, Cache & Virtual Environments ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# --- Frontend Node Modules & Vite Build Output ---
+dashboard/node_modules/
+node_modules/
+dashboard/dist/
+dist/
+dashboard/.vite/
+.vite/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Testing & Coverage ---
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# --- OS & Editor Specific ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

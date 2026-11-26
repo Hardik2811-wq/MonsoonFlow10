@@ -132,14 +132,14 @@ export function getColorForChannel(value: number, channel: ChannelId): RgbColor 
   return evaluateStops(v, PALETTES[channel]);
 }
 
-const FIELD_ALPHA = 0.62;
+const FIELD_ALPHA = 0.5;
 
 /** Palette colour + transparency rule for a physical value. */
 export function channelRgba(value: number, channel: ChannelId): RgbaColor {
   const c = getColorForChannel(value, channel);
   if (channel === 'tp') {
     // Dry -> fully transparent; heavier rain -> more opaque
-    const a = smoothstep(0.2, 1.5, value) * (0.42 + 0.46 * Math.min(1, value / 30));
+    const a = smoothstep(0.2, 1.5, value) * (0.34 + 0.38 * Math.min(1, value / 30));
     return { ...c, a };
   }
   return { ...c, a: FIELD_ALPHA };
@@ -171,7 +171,7 @@ export function getAnomalyDivergentColor(delta: number, maxAbsDelta: number): Rg
 /** Divergent colour with transparency centred at 0 (|delta| < 1% of max is invisible). */
 export function anomalyRgba(delta: number, maxAbsDelta: number): RgbaColor {
   const n = maxAbsDelta > 0 ? Math.min(1, Math.abs(delta) / maxAbsDelta) : 0;
-  const a = smoothstep(0.01, 0.12, n) * (0.4 + 0.5 * n);
+  const a = smoothstep(0.01, 0.12, n) * (0.34 + 0.42 * n);
   return { ...getAnomalyDivergentColor(delta, maxAbsDelta), a };
 }
 

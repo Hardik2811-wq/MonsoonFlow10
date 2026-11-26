@@ -29,10 +29,10 @@ export const DownstreamImpactPanel: React.FC = () => {
   }, [currentFrame, baseFrame]);
 
   return (
-    <div className="w-80 h-full bg-[#111827] border-l border-[#1E293B] p-4 flex flex-col justify-between overflow-y-auto select-none font-mono text-xs">
+    <div className="w-80 h-full bg-[#111827]/55 backdrop-blur-xl backdrop-saturate-150 border border-white/10 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.45)] p-4 flex flex-col justify-between overflow-y-auto select-none font-mono text-xs">
       <div>
         {/* Panel Header */}
-        <div className="flex items-center justify-between border-b border-[#1E293B] pb-2 mb-4">
+        <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-4">
           <div className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-sky-400" />
             <span className="font-semibold text-slate-100 tracking-wider">
@@ -47,7 +47,7 @@ export const DownstreamImpactPanel: React.FC = () => {
         {/* Primary Composite Gauges */}
         <div className="grid grid-cols-2 gap-3 mb-4">
           {/* Flood Risk Index */}
-          <div className="bg-[#0B0F17] border border-[#1E293B] rounded p-3">
+          <div className="bg-[#0B0F17]/55 border border-white/10 rounded p-3">
             <div className="flex items-center justify-between text-slate-400 mb-1">
               <span className="text-[10px]">FLOOD RISK</span>
               <CloudRain className="w-3.5 h-3.5 text-sky-400" />
@@ -71,7 +71,7 @@ export const DownstreamImpactPanel: React.FC = () => {
           </div>
 
           {/* Crop Moisture Stress Index */}
-          <div className="bg-[#0B0F17] border border-[#1E293B] rounded p-3">
+          <div className="bg-[#0B0F17]/55 border border-white/10 rounded p-3">
             <div className="flex items-center justify-between text-slate-400 mb-1">
               <span className="text-[10px]">CROP STRESS</span>
               <Sprout className="w-3.5 h-3.5 text-emerald-400" />
@@ -97,7 +97,7 @@ export const DownstreamImpactPanel: React.FC = () => {
         <ShockTrajectoryChart />
 
         {/* Heavy Precipitation Threshold Counters */}
-        <div className="bg-[#0B0F17] border border-[#1E293B] rounded p-3 mb-4 tabular-nums">
+        <div className="bg-[#0B0F17]/55 border border-white/10 rounded p-3 mb-4 tabular-nums">
           <span className="text-[11px] text-slate-400 block mb-2 font-medium">
             PRECIPITATION CLUSTER AUDIT
           </span>
@@ -132,7 +132,7 @@ export const DownstreamImpactPanel: React.FC = () => {
             {impacts.basins.map((basin) => (
               <div
                 key={basin.regionId}
-                className="bg-[#0B0F17] border border-[#1E293B] rounded p-2 text-[11px]"
+                className="bg-[#0B0F17]/55 border border-white/10 rounded p-2 text-[11px]"
               >
                 <div className="flex justify-between items-center mb-1">
                   <span className="font-semibold text-slate-200 truncate pr-2">
@@ -171,7 +171,7 @@ export const DownstreamImpactPanel: React.FC = () => {
       </div>
 
       {/* Humanitarian Lens Footer Note */}
-      <div className="border-t border-[#1E293B] pt-3 text-[10px] text-slate-500 leading-normal">
+      <div className="border-t border-white/10 pt-3 text-[10px] text-slate-500 leading-normal">
         Computed from the displayed rollout tensors. Cell counts and area cover the full 32x36 grid (area ∝ cos lat). Flood risk and crop stress are heuristic indices for comparing scenarios, not IMD warning categories. 10 mm/day is the grader's heavy-rain threshold.
       </div>
     </div>

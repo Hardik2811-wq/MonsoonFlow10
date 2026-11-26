@@ -56,8 +56,30 @@ interface ContourLayer {
 const TILT_DEG = 38;
 const TILT_PERSPECTIVE = 1400;
 const SMOOTH_PX_PER_CELL = 8;
+/** Cells of soft fade drawn outside the domain in SMOOTH mode (CELLS mode keeps the exact hard edge). */
+const EDGE_MARGIN_CELLS = 2;
 const HALF = GRID_CONFIG.resolutionDeg / 2;
 const STAGE_TRANSFORM = `perspective(${TILT_PERSPECTIVE}px) rotateX(${TILT_DEG}deg)`;
+/** The glass side panels (w-80 + 12 px margin, see App.tsx) float over the map's left/right edges. */
+const SIDE_INSET = 332;
+const OVERLAY_GAP = 12;
+/** Map-chrome rows at the top (channel bar + layer toggles) and bottom (legend) */
+const TOP_CHROME = 96;
+const DOMAIN_BOUNDS = L.latLngBounds(
+  [GRID_CONFIG.latMin - HALF, GRID_CONFIG.lonMin - HALF],
+  [GRID_CONFIG.latMax + HALF, GRID_CONFIG.lonMax + HALF]
+);
+const FIT_PADDING = {
+  paddingTopLeft: L.point(SIDE_INSET + OVERLAY_GAP, TOP_CHROME),
+  paddingBottomRight: L.point(SIDE_INSET + OVERLAY_GAP, OVERLAY_GAP),
+};
+
+/** Keep the 32x36 domain filling the free area: fit it, and never allow zooming out past that. */
+function fitDomain(map: L.Map): void {
+  const z = map.getBoundsZoom(DOMAIN_BOUNDS, false, L.point(2 * (SIDE_INSET + OVERLAY_GAP), TOP_CHROME + OVERLAY_GAP));
+  map.setMinZoom(z);
+  map.fitBounds(DOMAIN_BOUNDS, { ...FIT_PADDING, animate: false });
+}
 
 const prefersReducedMotion = (): boolean =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -186,18 +208,20 @@ export const IndiaClimateMap: React.FC = () => {
   // ---- Field imagery ----------------------------------------------------------------------
   const fieldImages = useMemo(() => {
     const S = smooth ? SMOOTH_PX_PER_CELL : 1;
+    const m = smooth ? EDGE_MARGIN_CELLS : 0;
     const colour = (v: number) => channelRgba(v, selectedChannel);
     if (isAnomaly) {
-      return { left: buildFieldImage(deltaGrid, (d) => anomalyRgba(d, maxAbsDelta), S), right: null };
+      return { left: buildFieldImage(deltaGrid, (d) => anomalyRgba(d, maxAbsDelta), S, m), right: null, margin: m };
     }
-    if (viewMode === 'BASELINE') return { left: buildFieldImage(currentBaselineGrid, colour, S), right: null };
+    if (viewMode === 'BASELINE') return { left: buildFieldImage(currentBaselineGrid, colour, S, m), right: null, margin: m };
     if (viewMode === 'SPLIT') {
       return {
-        left: buildFieldImage(currentBaselineGrid, colour, S),
-        right: buildFieldImage(currentShockGrid, colour, S),
+        left: buildFieldImage(currentBaselineGrid, colour, S, m),
+        right: buildFieldImage(currentShockGrid, colour, S, m),
+        margin: m,
       };
     }
-    return { left: buildFieldImage(currentShockGrid, colour, S), right: null };
+    return { left: buildFieldImage(currentShockGrid, colour, S, m), right: null, margin: m };
   }, [smooth, selectedChannel, isAnomaly, viewMode, deltaGrid, maxAbsDelta, currentBaselineGrid, currentShockGrid]);
 
   // ---- Isolines and glowing extreme cores -------------------------------------------------
@@ -241,10 +265,13 @@ export const IndiaClimateMap: React.FC = () => {
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
     const map = L.map(mapContainerRef.current, {
-      center: [21.5, 82.5],
+      center: [22, 83],
       zoom: 5,
-      minZoom: 4,
+      zoomSnap: 0.25,
       maxZoom: 9,
+      // Data exists only inside the model domain: keep it on screen (generous slack for the panels)
+      maxBounds: DOMAIN_BOUNDS.pad(0.6),
+      maxBoundsViscosity: 1.0,
       zoomControl: false,
       attributionControl: false,
       zoomAnimation: false, // canvases redraw on 'zoom'; an animated tile zoom would drift from them
@@ -257,11 +284,18 @@ export const IndiaClimateMap: React.FC = () => {
 
     const redraw = () => drawStaticRef.current();
     map.on('move zoom resize', redraw);
-    const t = setTimeout(() => map.invalidateSize(), 150);
+    const refit = () => fitDomain(map);
+    map.on('resize', refit);
+    fitDomain(map);
+    const t = setTimeout(() => {
+      map.invalidateSize();
+      fitDomain(map);
+    }, 150);
     mapInstanceRef.current = map;
     return () => {
       clearTimeout(t);
       map.off('move zoom resize', redraw);
+      map.off('resize', refit);
       map.remove();
       mapInstanceRef.current = null;
     };
@@ -283,6 +317,17 @@ export const IndiaClimateMap: React.FC = () => {
     if (rctx) {
       rctx.clearRect(0, 0, w, h);
       if (showRelief && reliefImage) drawFieldImage(rctx, reliefImage, project, true);
+      // Outside the 32x36 domain there is no model data: dim the basemap there. Drawn below the
+      // field so the field's soft edge fades over it.
+      const [ox0, oy0] = project(GRID_CONFIG.latMax + HALF, GRID_CONFIG.lonMin - HALF);
+      const [ox1, oy1] = project(GRID_CONFIG.latMin - HALF, GRID_CONFIG.lonMax + HALF);
+      rctx.save();
+      rctx.fillStyle = 'rgba(7, 11, 17, 0.5)';
+      rctx.beginPath();
+      rctx.rect(0, 0, w, h);
+      rctx.rect(ox0, oy0, ox1 - ox0, oy1 - oy0);
+      rctx.fill('evenodd');
+      rctx.restore();
     }
 
     // Field raster
@@ -292,14 +337,14 @@ export const IndiaClimateMap: React.FC = () => {
       if (fieldImages.right) {
         fctx.save();
         clipSide(fctx, 'left', w, h);
-        drawFieldImage(fctx, fieldImages.left, project, smooth);
+        drawFieldImage(fctx, fieldImages.left, project, smooth, fieldImages.margin);
         fctx.restore();
         fctx.save();
         clipSide(fctx, 'right', w, h);
-        drawFieldImage(fctx, fieldImages.right, project, smooth);
+        drawFieldImage(fctx, fieldImages.right, project, smooth, fieldImages.margin);
         fctx.restore();
       } else {
-        drawFieldImage(fctx, fieldImages.left, project, smooth);
+        drawFieldImage(fctx, fieldImages.left, project, smooth, fieldImages.margin);
       }
     }
 
@@ -335,16 +380,24 @@ export const IndiaClimateMap: React.FC = () => {
       xctx.stroke();
     }
 
-    // Domain boundary with a soft drop shadow for depth
+    // Valid-data outline: thin crisp line + label, so the soft edge is never mistaken for data
     const [dx0, dy0] = project(GRID_CONFIG.latMax + HALF, GRID_CONFIG.lonMin - HALF);
     const [dx1, dy1] = project(GRID_CONFIG.latMin - HALF, GRID_CONFIG.lonMax + HALF);
     xctx.save();
     xctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
-    xctx.shadowBlur = 6;
-    xctx.strokeStyle = '#334155';
-    xctx.lineWidth = 1.5;
-    xctx.setLineDash([4, 4]);
-    xctx.strokeRect(dx0, dy0, dx1 - dx0, dy1 - dy0);
+    xctx.shadowBlur = 4;
+    xctx.strokeStyle = 'rgba(148, 163, 184, 0.55)';
+    xctx.lineWidth = 1;
+    xctx.strokeRect(Math.round(dx0) + 0.5, Math.round(dy0) + 0.5, Math.round(dx1 - dx0), Math.round(dy1 - dy0));
+    xctx.shadowBlur = 0;
+    xctx.font = '10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    xctx.textBaseline = 'bottom';
+    const label = 'MODEL DOMAIN · 6.5–37.5°N · 65.5–100.5°E';
+    const tw = xctx.measureText(label).width;
+    xctx.fillStyle = 'rgba(11, 15, 23, 0.75)';
+    xctx.fillRect(Math.round(dx1) - tw - 10, Math.round(dy1) - 17, tw + 8, 14);
+    xctx.fillStyle = 'rgba(148, 163, 184, 0.9)';
+    xctx.fillText(label, Math.round(dx1) - tw - 6, Math.round(dy1) - 5);
     xctx.restore();
 
     // Active shock footprint
@@ -599,7 +652,7 @@ export const IndiaClimateMap: React.FC = () => {
         <canvas
           ref={fieldCanvasRef}
           className="absolute inset-0 pointer-events-none z-10"
-          style={{ filter: 'drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55))' }}
+          style={{ filter: 'saturate(0.85) drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55))' }}
         />
         <canvas ref={fxCanvasRef} className="absolute inset-0 pointer-events-none z-[11]" />
         <canvas ref={windCanvasRef} className="absolute inset-0 pointer-events-none z-[12]" />
@@ -611,7 +664,7 @@ export const IndiaClimateMap: React.FC = () => {
       )}
 
       {viewMode === 'SPLIT' && (
-        <div className="absolute top-24 inset-x-0 z-20 flex justify-between px-12 pointer-events-none text-xs font-mono">
+        <div className="absolute top-24 z-20 flex justify-between pointer-events-none text-xs font-mono" style={{ left: SIDE_INSET + 3 * OVERLAY_GAP, right: SIDE_INSET + 3 * OVERLAY_GAP }}>
           <div className="bg-[#111827]/90 border border-slate-700 px-3 py-1 rounded text-slate-300 shadow">
             ← BASELINE (P = 0)
           </div>
@@ -622,7 +675,7 @@ export const IndiaClimateMap: React.FC = () => {
       )}
 
       {/* Top-left: channel + layer toggles */}
-      <div className="absolute top-3 left-3 z-20 flex flex-col items-start gap-2">
+      <div className="absolute top-3 z-20 flex flex-col items-start gap-2" style={{ left: SIDE_INSET + OVERLAY_GAP }}>
         <ChannelSelector />
         <div className="flex items-center bg-[#111827]/95 border border-[#1E293B] rounded p-1 text-xs font-mono text-slate-400 gap-0.5">
           <button onClick={() => setSmooth((p) => !p)} className={toggleBtn(smooth)} title="Bilinear interpolation between cell centres (off: exact 1° cells)">
@@ -663,7 +716,7 @@ export const IndiaClimateMap: React.FC = () => {
       </div>
 
       {/* Top-right: domain + Day-0 provenance */}
-      <div className="absolute top-3 right-3 z-20 flex flex-col items-end gap-2">
+      <div className="absolute top-3 z-20 flex flex-col items-end gap-2" style={{ right: SIDE_INSET + OVERLAY_GAP }}>
         <div className="px-2.5 py-1 rounded bg-[#111827]/90 border border-[#1E293B] text-xs font-mono text-slate-300">
           DOMAIN: <span className="text-sky-400">32x36 (1.0° res)</span>
         </div>
@@ -676,12 +729,12 @@ export const IndiaClimateMap: React.FC = () => {
         </div>
       </div>
 
-      <div className="absolute bottom-4 left-4 z-20">
+      <div className="absolute bottom-3 z-20" style={{ left: SIDE_INSET + OVERLAY_GAP }}>
         <ColorbarLegend isAnomaly={isAnomaly} maxAbsDelta={maxAbsDelta} contoursOn={showContours} />
       </div>
 
       {hoverInfo && (
-        <div className="absolute bottom-4 right-4 z-20 bg-[#111827]/95 border border-[#1E293B] rounded p-3 text-xs font-mono shadow-2xl tabular-nums">
+        <div style={{ right: SIDE_INSET + OVERLAY_GAP }} className="absolute bottom-3 z-20 bg-[#111827]/95 border border-[#1E293B] rounded p-3 text-xs font-mono shadow-2xl tabular-nums">
           <div className="flex items-center gap-2 mb-1.5 text-slate-400 border-b border-slate-800 pb-1">
             <Crosshair className="w-3.5 h-3.5 text-sky-400" />
             <span>

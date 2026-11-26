@@ -57,16 +57,38 @@ export const fracToLon = (fj: number) => GRID_CONFIG.lonMin + fj * GRID_CONFIG.r
 
 // ---------------------------------------------------------------------------------------------
 // Field image: S pixels per cell. S = 1 -> exact cell values (blocky); S > 1 -> bilinear.
-// Pixel row 0 is the NORTH edge of the domain.
+// Pixel row 0 is the NORTH edge of the image.
+//
+// `margin` (whole cells) adds a soft edge OUTSIDE the domain: it repeats the nearest edge colour
+// and fades it to fully transparent within EDGE_FADE_CELLS, so the field dissolves into the
+// basemap instead of ending in a hard square. It carries no new data (the outline marks the
+// valid area); every pixel inside the domain is unchanged.
 // ---------------------------------------------------------------------------------------------
+
+/** Width of the outside fade, in cells (degrees). */
+export const EDGE_FADE_CELLS = 1.5;
+
+function smoothstep01(x: number): number {
+  const t = Math.max(0, Math.min(1, x));
+  return t * t * (3 - 2 * t);
+}
+
+/** 1 inside the domain, fading to 0 at EDGE_FADE_CELLS outside it (fractional grid coords). */
+export function edgeFade(fi: number, fj: number): number {
+  const di = Math.max(-0.5 - fi, fi - (NLAT - 0.5), 0);
+  const dj = Math.max(-0.5 - fj, fj - (NLON - 0.5), 0);
+  const dist = Math.hypot(di, dj);
+  return dist === 0 ? 1 : 1 - smoothstep01(dist / EDGE_FADE_CELLS);
+}
 
 export function buildFieldImage(
   grid: Grid2D,
   colour: (v: number) => RgbaColor,
-  S: number
+  S: number,
+  margin = 0
 ): HTMLCanvasElement {
-  const W = NLON * S;
-  const H = NLAT * S;
+  const W = (NLON + 2 * margin) * S;
+  const H = (NLAT + 2 * margin) * S;
   const canvas = document.createElement('canvas');
   canvas.width = W;
   canvas.height = H;
@@ -75,16 +97,18 @@ export function buildFieldImage(
   const img = ctx.createImageData(W, H);
   const d = img.data;
   for (let py = 0; py < H; py++) {
-    const fi = NLAT - (py + 0.5) / S - 0.5;
+    const fi = NLAT + margin - (py + 0.5) / S - 0.5;
     for (let px = 0; px < W; px++) {
-      const fj = (px + 0.5) / S - 0.5;
-      const v = S === 1 ? grid[NLAT - 1 - py][px] : sampleBilinear(grid, fi, fj);
+      const fj = (px + 0.5) / S - 0.5 - margin;
+      const fade = margin > 0 ? edgeFade(fi, fj) : 1;
+      if (fade <= 0) continue;
+      const v = S === 1 && margin === 0 ? grid[NLAT - 1 - py][px] : sampleBilinear(grid, fi, fj);
       const c = colour(v);
       const k = (py * W + px) * 4;
       d[k] = c.r;
       d[k + 1] = c.g;
       d[k + 2] = c.b;
-      d[k + 3] = Math.round(c.a * 255);
+      d[k + 3] = Math.round(c.a * fade * 255);
     }
   }
   ctx.putImageData(img, 0, 0);
@@ -99,21 +123,24 @@ export function drawFieldImage(
   ctx: CanvasRenderingContext2D,
   image: HTMLCanvasElement,
   project: Projector,
-  smooth: boolean
+  smooth: boolean,
+  margin = 0
 ): void {
-  const S = image.height / NLAT;
+  const rows = NLAT + 2 * margin;
+  const S = image.height / rows;
+  const north = GRID_CONFIG.latMax + HALF + margin;
   ctx.imageSmoothingEnabled = smooth;
   // Snap strip edges to device pixels: adjacent strips share an edge exactly, so there is
   // neither a gap nor a double-painted (brighter) seam with semi-transparent colours.
   const dpr = window.devicePixelRatio || 1;
   const snap = (v: number) => Math.round(v * dpr) / dpr;
-  const [x0] = project(0, GRID_CONFIG.lonMin - HALF);
-  const [x1] = project(0, GRID_CONFIG.lonMax + HALF);
+  const [x0] = project(0, GRID_CONFIG.lonMin - HALF - margin);
+  const [x1] = project(0, GRID_CONFIG.lonMax + HALF + margin);
   const left = snap(x0);
   const width = snap(x1) - left;
-  let yTop = snap(project(GRID_CONFIG.latMax + HALF, 0)[1]);
-  for (let r = 0; r < NLAT; r++) {
-    const yBot = snap(project(GRID_CONFIG.latMax + HALF - r - 1, 0)[1]);
+  let yTop = snap(project(north, 0)[1]);
+  for (let r = 0; r < rows; r++) {
+    const yBot = snap(project(north - r - 1, 0)[1]);
     if (yBot > yTop) ctx.drawImage(image, 0, r * S, image.width, S, left, yTop, width, yBot - yTop);
     yTop = yBot;
   }

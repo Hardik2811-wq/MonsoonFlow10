@@ -96,7 +96,7 @@ export const ShockTrajectoryChart: React.FC = () => {
   const tpKey = metricMode === 'PEAK' ? 'peakTp' : 'meanTp';
 
   return (
-    <div className="bg-[#0B0F17] border border-[#1E293B] rounded p-3 mb-4 font-mono">
+    <div className="bg-[#0B0F17]/55 border border-white/10 rounded p-3 mb-4 font-mono">
       {/* Header & Mode Toggle */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
@@ -106,7 +106,7 @@ export const ShockTrajectoryChart: React.FC = () => {
           </span>
         </div>
 
-        <div className="flex items-center bg-[#111827] border border-[#1E293B] rounded p-0.5 text-[10px]">
+        <div className="flex items-center bg-[#111827] border border-white/10 rounded p-0.5 text-[10px]">
           <button
             onClick={() => setMetricMode('PEAK')}
             className={`px-1.5 py-0.5 rounded transition-colors ${

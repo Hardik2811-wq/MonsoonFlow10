@@ -50,3 +50,9 @@
 input[type="range"] {
   accent-color: #0284C7;
 }
+
+/* Thin dark scrollbars (the glass side panels scroll over the map) */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+}

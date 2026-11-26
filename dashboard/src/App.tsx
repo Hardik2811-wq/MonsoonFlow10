@@ -22,17 +22,21 @@ export function App() {
             <Header />
 
             {/* Main Instrument Workspace: Shock Lab | India Climate Map | Downstream Impacts */}
-            <div className="flex flex-1 overflow-hidden">
-              {/* Left Column: Multiverse Counterfactual Shock Lab */}
-              <ShockLabPanel />
-
-              {/* Center Column: Interactive 32x36 India Domain Climate Map */}
-              <div className="flex-1 relative h-full">
+            {/* The map runs full-width underneath; the side panels float over it as glass */}
+            <div className="relative flex-1 overflow-hidden">
+              <div className="absolute inset-0">
                 <IndiaClimateMap />
               </div>
 
-              {/* Right Column: Humanitarian & Agricultural Downstream Impact Module */}
-              <DownstreamImpactPanel />
+              {/* Left: Multiverse Counterfactual Shock Lab */}
+              <div className="absolute left-3 top-3 bottom-3 z-30 flex">
+                <ShockLabPanel />
+              </div>
+
+              {/* Right: Humanitarian & Agricultural Downstream Impact Module */}
+              <div className="absolute right-3 top-3 bottom-3 z-30 flex">
+                <DownstreamImpactPanel />
+              </div>
             </div>
 
             {/* Bottom Deck: Forecast Timeline Scrubber (Day 0 - 10) */}

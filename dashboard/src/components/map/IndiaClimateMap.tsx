@@ -492,7 +492,7 @@ export const IndiaClimateMap: React.FC = () => {
       return ctx;
     };
 
-    if (windMode === 'OFF' || (isAnomaly && windFields.deltaPeak <= 1e-3)) {
+    if (windMode === 'OFF' || (tilt && !!staticFields) || (isAnomaly && windFields.deltaPeak <= 1e-3)) {
       clear();
       return;
     }
@@ -538,7 +538,7 @@ export const IndiaClimateMap: React.FC = () => {
       cancelAnimationFrame(raf);
       map.off('move zoom resize', onMove);
     };
-  }, [windMode, windFields, viewMode, isAnomaly, selectedChannel]);
+  }, [windMode, windFields, viewMode, isAnomaly, selectedChannel, tilt, staticFields]);
 
   // ---- 3D tilt: lock pan/zoom (Leaflet's own hit-testing assumes an untransformed map) ----
   useEffect(() => {
@@ -685,15 +685,19 @@ export const IndiaClimateMap: React.FC = () => {
         <canvas ref={windCanvasRef} className="absolute inset-0 pointer-events-none z-[12]" />
       </div>
 
-      {/* True 3D Terrain Heightfield (Three.js + orography_m + draped live field) */}
-      {tilt && staticFields && (
+      {/* True 3D Terrain Heightfield (kept mounted so WebGL & Esri tiles stay cached; crossfades smoothly) */}
+      {staticFields && (
         <Terrain3DView
+          active={tilt}
           staticFields={staticFields}
           fieldImages={fieldImages}
           smooth={smooth}
           contourLayers={contourLayers}
           showGridLines={showGridLines}
           viewMode={viewMode}
+          selectedChannel={selectedChannel}
+          windMode={windMode}
+          windFields={windFields}
           activePreset={activePreset}
           customSpec={customSpec}
           isBrushMode={isBrushMode}

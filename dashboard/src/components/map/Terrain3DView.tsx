@@ -1,23 +1,28 @@
 /**
  * Terrain3DView.tsx - True 3D terrain heightfield using real orography_m & land_sea_mask
  *
- * Upsamples the 32x36 orography_m grid to 96x108 with bilinear interpolation, extrudes real Z
- * elevation (Himalayas ~5,284 m, Tibetan Plateau, Western Ghats, Deccan Plateau above z=0 sea),
- * and drapes the live weather field, contours, coastlines, and shock outlines onto the surface.
+ * - Upsamples 32x36 orography_m to 96x108 with bilinear interpolation and extrudes real Z height.
+ * - Composites Esri World Dark Gray basemap tiles (with CORS) + land_sea_mask=0.5 coastlines
+ *   directly into the 3D surface texture underneath the translucent weather field.
+ * - Renders live WindFlow particles / arrows and crisp contours onto the 3D surface.
+ * - Supports damped drag-to-orbit, scroll zoom, and raycasted hover/brush interaction.
  */
 
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { GRID_CONFIG } from '../../types/climate';
+import { GRID_CONFIG, type ChannelId } from '../../types/climate';
 import type { ViewMode } from '../../context/ClimateDataContext';
 import type { StaticFields } from '../../services/staticFields';
 import type { GaussianShockSpec, ShockPreset } from '../../types/shocks';
+import { isWindChannel } from '../../services/colormaps';
 import {
   contourSegments,
   sampleBilinear,
   type ContourStyle,
+  type Projector,
   type Segment,
 } from '../../services/fieldRaster';
+import { WindFlow, drawWindArrows, type WindField } from '../../services/windFlow';
 
 export interface TerrainContourLayer {
   segs: Segment[];
@@ -25,7 +30,10 @@ export interface TerrainContourLayer {
   side: 'all' | 'left' | 'right';
 }
 
+export type TerrainWindMode = 'FLOW' | 'ARROWS' | 'OFF';
+
 interface Terrain3DViewProps {
+  active: boolean;
   staticFields: StaticFields;
   fieldImages: {
     left: HTMLCanvasElement;
@@ -36,6 +44,14 @@ interface Terrain3DViewProps {
   contourLayers: TerrainContourLayer[];
   showGridLines: boolean;
   viewMode: ViewMode;
+  selectedChannel: ChannelId;
+  windMode: TerrainWindMode;
+  windFields: {
+    base: WindField;
+    shock: WindField;
+    delta: WindField;
+    deltaPeak: number;
+  };
   activePreset: ShockPreset;
   customSpec: GaussianShockSpec;
   isBrushMode: boolean;
@@ -46,6 +62,10 @@ interface Terrain3DViewProps {
 const NLAT = GRID_CONFIG.nLat; // 32
 const NLON = GRID_CONFIG.nLon; // 36
 const HALF = GRID_CONFIG.resolutionDeg / 2; // 0.5
+const LON_MIN = GRID_CONFIG.lonMin - HALF; // 65.0
+const LON_MAX = GRID_CONFIG.lonMax + HALF; // 101.0
+const LAT_MIN = GRID_CONFIG.latMin - HALF; // 6.0
+const LAT_MAX = GRID_CONFIG.latMax + HALF; // 38.0
 
 /** 3x bilinear upsampling -> 96x108 terrain mesh */
 const SEG_X = 108;
@@ -55,22 +75,107 @@ const SEG_Z = 96;
 const WORLD_W = NLON * Math.cos((22 * Math.PI) / 180); // ~33.38
 const WORLD_D = NLAT; // 32
 const MAX_OROGRAPHY_M = 5284;
-const MAX_HEIGHT = 5.4;
+const MAX_HEIGHT = 6.0;
 
-/** Draped texture resolution (16 px per 1° cell = 576x512) */
-const TEX_S = 16;
+/** Draped texture resolution (24 px per 1° cell = 864x768 for crisp labels, coastlines & wind) */
+const TEX_S = 24;
 const TEX_W = NLON * TEX_S;
 const TEX_H = NLAT * TEX_S;
 
+const ESRI_TILE_URL =
+  'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile';
+const ESRI_ZOOM = 5;
+
+const prefersReducedMotion = (): boolean =>
+  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
+const mercYNorm = (lat: number): number => {
+  const rad = (lat * Math.PI) / 180;
+  return (1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2;
+};
+
+const lonXNorm = (lon: number): number => (lon + 180) / 360;
+
+const toTexProjector: Projector = (lat, lon) => [
+  (lon - LON_MIN) * TEX_S,
+  (LAT_MAX - lat) * TEX_S,
+];
+
 function worldToLatLon(x: number, z: number): { lat: number; lon: number } {
-  const u = x / WORLD_W + 0.5; // 0..1 west->east
-  const v = z / WORLD_D + 0.5; // 0..1 north->south
-  const lon = GRID_CONFIG.lonMin - HALF + u * NLON;
-  const lat = GRID_CONFIG.latMax + HALF - v * NLAT;
+  const u = x / WORLD_W + 0.5;
+  const v = z / WORLD_D + 0.5;
+  const lon = LON_MIN + u * NLON;
+  const lat = LAT_MAX - v * NLAT;
   return { lat, lon };
 }
 
-function drawDrapedTexture(
+/**
+ * Fetch Esri World Dark Gray tiles at zoom 5 covering [6..38N, 65..101E] with CORS,
+ * and reproject row-by-row from Web Mercator onto our linear (lon, lat) texture canvas.
+ */
+async function loadEsriDomainBasemap(): Promise<HTMLCanvasElement | null> {
+  const n = 1 << ESRI_ZOOM; // 32
+  const x0 = Math.floor(lonXNorm(LON_MIN) * n);
+  const x1 = Math.floor(lonXNorm(LON_MAX) * n);
+  const y0 = Math.floor(mercYNorm(LAT_MAX) * n);
+  const y1 = Math.floor(mercYNorm(LAT_MIN) * n);
+
+  const tilesW = (x1 - x0 + 1) * 256;
+  const tilesH = (y1 - y0 + 1) * 256;
+  const stitched = document.createElement('canvas');
+  stitched.width = tilesW;
+  stitched.height = tilesH;
+  const sctx = stitched.getContext('2d');
+  if (!sctx) return null;
+
+  const jobs: Promise<boolean>[] = [];
+  for (let ty = y0; ty <= y1; ty++) {
+    for (let tx = x0; tx <= x1; tx++) {
+      jobs.push(
+        new Promise((resolve) => {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            sctx.drawImage(img, (tx - x0) * 256, (ty - y0) * 256);
+            resolve(true);
+          };
+          img.onerror = () => resolve(false);
+          img.src = `${ESRI_TILE_URL}/${ESRI_ZOOM}/${ty}/${tx}`;
+        })
+      );
+    }
+  }
+
+  const results = await Promise.all(jobs);
+  if (!results.some(Boolean)) return null;
+
+  const out = document.createElement('canvas');
+  out.width = TEX_W;
+  out.height = TEX_H;
+  const octx = out.getContext('2d');
+  if (!octx) return null;
+
+  const sxLeft = (lonXNorm(LON_MIN) * n - x0) * 256;
+  const sxRight = (lonXNorm(LON_MAX) * n - x0) * 256;
+  const sxW = sxRight - sxLeft;
+
+  octx.save();
+  octx.filter = 'contrast(1.26) brightness(1.28)';
+  octx.imageSmoothingEnabled = true;
+  // Reproject Web Mercator Y to linear latitude in 2px strips
+  for (let py = 0; py < TEX_H; py += 2) {
+    const latTop = LAT_MAX - (py / TEX_H) * NLAT;
+    const latBot = LAT_MAX - ((py + 2) / TEX_H) * NLAT;
+    const syTop = (mercYNorm(latTop) * n - y0) * 256;
+    const syBot = (mercYNorm(latBot) * n - y0) * 256;
+    const sh = Math.max(0.5, syBot - syTop);
+    octx.drawImage(stitched, sxLeft, syTop, sxW, sh, 0, py, TEX_W, 2);
+  }
+  octx.restore();
+  return out;
+}
+
+function drawStaticDrapedCanvas(
   canvas: HTMLCanvasElement,
   baseCanvas: HTMLCanvasElement,
   fieldImages: Terrain3DViewProps['fieldImages'],
@@ -86,10 +191,10 @@ function drawDrapedTexture(
   if (!ctx) return;
 
   ctx.clearRect(0, 0, TEX_W, TEX_H);
-  // 1. Pre-rendered land/ocean + coastline base
+  // 1. Esri basemap + land/ocean contrast + crisp coastline contour
   ctx.drawImage(baseCanvas, 0, 0);
 
-  // 2. Draped weather field (crop out any outer fade margin so it aligns 1:1 with the 32x36 mesh)
+  // 2. Draped weather field (cropped to inner 32x36 domain)
   const margin = fieldImages.margin;
   const imgS = fieldImages.left.height / (NLAT + 2 * margin);
   const sx = margin * imgS;
@@ -118,15 +223,12 @@ function drawDrapedTexture(
   }
   ctx.restore();
 
-  // Linear projection from fractional grid coords (fi, fj) -> texture px
   const toTex = (fi: number, fj: number): [number, number] => [
     (fj + 0.5) * TEX_S,
     (NLAT - 0.5 - fi) * TEX_S,
   ];
-  const latLonToTex = (lat: number, lon: number): [number, number] =>
-    toTex(lat - GRID_CONFIG.latMin, lon - GRID_CONFIG.lonMin);
 
-  // 3. Contours
+  // 3. Marching-squares contours + glowing extreme cores
   for (const layer of contourLayers) {
     if (layer.segs.length === 0) continue;
     ctx.save();
@@ -146,15 +248,15 @@ function drawDrapedTexture(
     ctx.lineCap = 'round';
     ctx.setLineDash(layer.style.dash ?? []);
     ctx.strokeStyle = layer.style.color;
-    ctx.lineWidth = layer.style.width * 1.1;
+    ctx.lineWidth = layer.style.width * 1.2;
     if (layer.style.glow > 0) {
       ctx.shadowColor = layer.style.color;
       ctx.shadowBlur = layer.style.glow;
       ctx.stroke();
       ctx.shadowBlur = 0;
-      ctx.globalAlpha = 0.9;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
-      ctx.lineWidth = Math.max(0.7, layer.style.width * 0.5);
+      ctx.globalAlpha = 0.92;
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.88)';
+      ctx.lineWidth = Math.max(0.8, layer.style.width * 0.55);
     }
     ctx.stroke();
     ctx.restore();
@@ -163,8 +265,8 @@ function drawDrapedTexture(
   // 4. Grid lines
   if (showGridLines) {
     ctx.save();
-    ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
-    ctx.lineWidth = 0.75;
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.24)';
+    ctx.lineWidth = 0.8;
     ctx.beginPath();
     for (let k = 0; k <= NLON; k++) {
       const x = k * TEX_S;
@@ -184,8 +286,8 @@ function drawDrapedTexture(
   ctx.save();
   ctx.strokeStyle = '#38BDF8';
   ctx.fillStyle = 'rgba(2, 132, 199, 0.14)';
-  ctx.lineWidth = 2;
-  ctx.setLineDash([6, 4]);
+  ctx.lineWidth = 2.2;
+  ctx.setLineDash([7, 5]);
   ctx.beginPath();
   let hasOutline = false;
   if (activePreset.box) {
@@ -194,8 +296,8 @@ function drawDrapedTexture(
     const latHi = Math.floor(la1 - GRID_CONFIG.latMin) + GRID_CONFIG.latMin + HALF;
     const lonLo = Math.ceil(lo0 - GRID_CONFIG.lonMin) + GRID_CONFIG.lonMin - HALF;
     const lonHi = Math.floor(lo1 - GRID_CONFIG.lonMin) + GRID_CONFIG.lonMin + HALF;
-    const [bx0, by0] = latLonToTex(latHi, lonLo);
-    const [bx1, by1] = latLonToTex(latLo, lonHi);
+    const [bx0, by0] = toTexProjector(latHi, lonLo);
+    const [bx1, by1] = toTexProjector(latLo, lonHi);
     ctx.rect(bx0, by0, bx1 - bx0, by1 - by0);
     hasOutline = true;
   } else if (isBrushMode || activePreset.id === 'CUSTOM' || activePreset.spec) {
@@ -206,7 +308,7 @@ function drawDrapedTexture(
       const th = (k / 72) * 2 * Math.PI;
       const lat = spec.centerLat + (spec.radiusKm / kmPerDeg) * Math.sin(th);
       const lon = spec.centerLon + (spec.radiusKm / (kmPerDeg * cosLat)) * Math.cos(th);
-      const [px, py] = latLonToTex(lat, lon);
+      const [px, py] = toTexProjector(lat, lon);
       if (k === 0) ctx.moveTo(px, py);
       else ctx.lineTo(px, py);
     }
@@ -222,8 +324,8 @@ function drawDrapedTexture(
   if (viewMode === 'SPLIT') {
     ctx.save();
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
-    ctx.lineWidth = 2;
-    ctx.setLineDash([6, 4]);
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([7, 5]);
     ctx.beginPath();
     ctx.moveTo(TEX_W / 2, 0);
     ctx.lineTo(TEX_W / 2, TEX_H);
@@ -233,12 +335,16 @@ function drawDrapedTexture(
 }
 
 export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
+  active,
   staticFields,
   fieldImages,
   smooth,
   contourLayers,
   showGridLines,
   viewMode,
+  selectedChannel,
+  windMode,
+  windFields,
   activePreset,
   customSpec,
   isBrushMode,
@@ -246,19 +352,47 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
   onBrushLatLon,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const staticDrapedCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const windCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const textureCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const textureRef = useRef<THREE.CanvasTexture | null>(null);
+  const windFlowRef = useRef<WindFlow | null>(null);
+  const terrainMeshRef = useRef<THREE.Mesh | null>(null);
+  const startRafRef = useRef<(() => void) | null>(null);
+  const enter3DRef = useRef<(() => void) | null>(null);
+  const activeRef = useRef(active);
+  const [esriBasemap, setEsriBasemap] = useState<HTMLCanvasElement | null>(null);
 
   const hoverCbRef = useRef(onHoverLatLon);
   const brushCbRef = useRef(onBrushLatLon);
   const brushModeRef = useRef(isBrushMode);
+  const windConfigRef = useRef({
+    windMode,
+    windFields,
+    viewMode,
+    selectedChannel,
+  });
+
   useEffect(() => {
+    activeRef.current = active;
     hoverCbRef.current = onHoverLatLon;
     brushCbRef.current = onBrushLatLon;
     brushModeRef.current = isBrushMode;
-  }, [onHoverLatLon, onBrushLatLon, isBrushMode]);
+    windConfigRef.current = { windMode, windFields, viewMode, selectedChannel };
+  }, [active, onHoverLatLon, onBrushLatLon, isBrushMode, windMode, windFields, viewMode, selectedChannel]);
 
-  // Precompute terrain base canvas (land/ocean shading + crisp 0.5 coastline contour)
+  // Load Esri World Dark Gray tiles once (with CORS) for crisp borders, coastlines & labels
+  useEffect(() => {
+    let alive = true;
+    loadEsriDomainBasemap().then((canvas) => {
+      if (alive && canvas) setEsriBasemap(canvas);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Precompute terrain base canvas: Esri basemap + ocean/land contrast + crisp coastline contour
   const baseTerrainCanvas = useMemo(() => {
     const canvas = document.createElement('canvas');
     canvas.width = TEX_W;
@@ -266,33 +400,64 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return canvas;
 
-    const img = ctx.createImageData(TEX_W, TEX_H);
-    const d = img.data;
-    for (let py = 0; py < TEX_H; py++) {
-      const fi = NLAT - (py + 0.5) / TEX_S - 0.5;
-      for (let px = 0; px < TEX_W; px++) {
-        const fj = (px + 0.5) / TEX_S - 0.5;
-        const lsm = sampleBilinear(staticFields.landSea, fi, fj);
-        const elev = Math.max(0, sampleBilinear(staticFields.orography, fi, fj));
-        const isLand = lsm >= 0.4;
-        const elevNorm = Math.min(1, elev / MAX_OROGRAPHY_M);
-        const k = (py * TEX_W + px) * 4;
-        if (!isLand) {
-          d[k] = 7;
-          d[k + 1] = 10;
-          d[k + 2] = 15;
-          d[k + 3] = 255;
-        } else {
-          // Dark slate landmass rising subtly in brightness toward the Tibetan Plateau
-          const tone = 22 + Math.round(elevNorm * 38);
-          d[k] = tone;
-          d[k + 1] = tone + 5;
-          d[k + 2] = tone + 12;
-          d[k + 3] = 255;
+    if (esriBasemap) {
+      ctx.drawImage(esriBasemap, 0, 0);
+      // Subtle ocean-vs-land contrast overlay so sea level reads dark & crisp against landmass
+      const shade = document.createElement('canvas');
+      shade.width = NLON * 4;
+      shade.height = NLAT * 4;
+      const shCtx = shade.getContext('2d');
+      if (shCtx) {
+        const img = shCtx.createImageData(shade.width, shade.height);
+        const d = img.data;
+        for (let py = 0; py < shade.height; py++) {
+          const fi = NLAT - (py + 0.5) / 4 - 0.5;
+          for (let px = 0; px < shade.width; px++) {
+            const fj = (px + 0.5) / 4 - 0.5;
+            const lsm = sampleBilinear(staticFields.landSea, fi, fj);
+            const k = (py * shade.width + px) * 4;
+            if (lsm < 0.45) {
+              d[k] = 4;
+              d[k + 1] = 8;
+              d[k + 2] = 16;
+              d[k + 3] = Math.round((1 - lsm / 0.45) * 75);
+            } else {
+              d[k + 3] = 0;
+            }
+          }
+        }
+        shCtx.putImageData(img, 0, 0);
+        ctx.drawImage(shade, 0, 0, TEX_W, TEX_H);
+      }
+    } else {
+      // Offline fallback if Esri tiles unreachable: clean obsidian ocean + slate land relief
+      const img = ctx.createImageData(TEX_W, TEX_H);
+      const d = img.data;
+      for (let py = 0; py < TEX_H; py++) {
+        const fi = NLAT - (py + 0.5) / TEX_S - 0.5;
+        for (let px = 0; px < TEX_W; px++) {
+          const fj = (px + 0.5) / TEX_S - 0.5;
+          const lsm = sampleBilinear(staticFields.landSea, fi, fj);
+          const elev = Math.max(0, sampleBilinear(staticFields.orography, fi, fj));
+          const isLand = lsm >= 0.4;
+          const elevNorm = Math.min(1, elev / MAX_OROGRAPHY_M);
+          const k = (py * TEX_W + px) * 4;
+          if (!isLand) {
+            d[k] = 7;
+            d[k + 1] = 11;
+            d[k + 2] = 18;
+            d[k + 3] = 255;
+          } else {
+            const tone = 24 + Math.round(elevNorm * 42);
+            d[k] = tone;
+            d[k + 1] = tone + 5;
+            d[k + 2] = tone + 12;
+            d[k + 3] = 255;
+          }
         }
       }
+      ctx.putImageData(img, 0, 0);
     }
-    ctx.putImageData(img, 0, 0);
 
     // Crisp coastline contour (land_sea_mask = 0.5)
     const coastSegs = contourSegments(staticFields.landSea, 0.5, 4);
@@ -302,16 +467,16 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
         ctx.moveTo((j1 + 0.5) * TEX_S, (NLAT - 0.5 - i1) * TEX_S);
         ctx.lineTo((j2 + 0.5) * TEX_S, (NLAT - 0.5 - i2) * TEX_S);
       }
-      ctx.strokeStyle = 'rgba(228, 228, 231, 0.5)';
-      ctx.lineWidth = 1.3;
+      ctx.strokeStyle = esriBasemap ? 'rgba(228, 228, 231, 0.35)' : 'rgba(228, 228, 231, 0.58)';
+      ctx.lineWidth = 1.4;
       ctx.lineCap = 'round';
       ctx.stroke();
     }
 
     return canvas;
-  }, [staticFields]);
+  }, [staticFields, esriBasemap]);
 
-  // Build 3D Three.js scene, heightfield geometry, lighting, and orbit controls
+  // Build 3D Three.js scene, 96x108 heightfield, lighting, wind loop, and orbit controls
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -321,9 +486,9 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x050505);
-    scene.fog = new THREE.FogExp2(0x050505, 0.011);
+    scene.fog = new THREE.FogExp2(0x050505, 0.0085);
 
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.5, 200);
+    const camera = new THREE.PerspectiveCamera(38, width / height, 0.5, 220);
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(width, height);
@@ -332,16 +497,16 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
     renderer.domElement.style.height = '100%';
     container.appendChild(renderer.domElement);
 
-    // Lighting for realistic 3D mountain relief
-    const ambient = new THREE.AmbientLight(0xffffff, 0.62);
+    // Ridge-enhancing directional lighting + clean ambient fill
+    const ambient = new THREE.AmbientLight(0xffffff, 0.72);
     scene.add(ambient);
 
-    const sunNW = new THREE.DirectionalLight(0xf8fafc, 1.35);
-    sunNW.position.set(-18, 24, -14);
+    const sunNW = new THREE.DirectionalLight(0xf8fafc, 1.55);
+    sunNW.position.set(-20, 26, -15);
     scene.add(sunNW);
 
-    const rimSE = new THREE.DirectionalLight(0x94a3b8, 0.35);
-    rimSE.position.set(14, 10, 18);
+    const rimSE = new THREE.DirectionalLight(0x94a3b8, 0.42);
+    rimSE.position.set(15, 10, 18);
     scene.add(rimSE);
 
     // Bilinearly upsampled 96x108 heightfield mesh
@@ -363,6 +528,18 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
     pos.needsUpdate = true;
     geometry.computeVertexNormals();
 
+    if (!staticDrapedCanvasRef.current) {
+      const sc = document.createElement('canvas');
+      sc.width = TEX_W;
+      sc.height = TEX_H;
+      staticDrapedCanvasRef.current = sc;
+    }
+    if (!windCanvasRef.current) {
+      const wc = document.createElement('canvas');
+      wc.width = TEX_W;
+      wc.height = TEX_H;
+      windCanvasRef.current = wc;
+    }
     if (!textureCanvasRef.current) {
       const tc = document.createElement('canvas');
       tc.width = TEX_W;
@@ -377,29 +554,46 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
 
     const material = new THREE.MeshStandardMaterial({
       map: texture,
-      roughness: 0.88,
-      metalness: 0.06,
+      roughness: 0.84,
+      metalness: 0.05,
       side: THREE.DoubleSide,
     });
 
     const terrainMesh = new THREE.Mesh(geometry, material);
+    terrainMesh.scale.y = 0.001;
+    terrainMeshRef.current = terrainMesh;
     scene.add(terrainMesh);
 
-    // Subtle domain plinth wireframe border at z = 0
     const borderGeo = new THREE.EdgesGeometry(new THREE.BoxGeometry(WORLD_W, 0.08, WORLD_D));
-    const borderMat = new THREE.LineBasicMaterial({ color: 0x3f3f46, transparent: true, opacity: 0.6 });
+    const borderMat = new THREE.LineBasicMaterial({ color: 0x3f3f46, transparent: true, opacity: 0.65 });
     const borderWire = new THREE.LineSegments(borderGeo, borderMat);
     borderWire.position.y = -0.04;
     scene.add(borderWire);
 
-    // Spherical orbit state (smoothly damped)
-    const target = new THREE.Vector3(0, 0.9, 0);
-    let theta = 0.06; // azimuth (rad), 0 = looking north from south
-    let phi = 0.86; // polar angle from +Y (rad)
-    let radius = 37;
-    let targetTheta = theta;
-    let targetPhi = phi;
-    let targetRadius = radius;
+    if (!windFlowRef.current) windFlowRef.current = new WindFlow(1400);
+
+    // Framed cleanly between the left and right glass side panels
+    const target = new THREE.Vector3(0, 0.8, 0.4);
+    let theta = 0.0;
+    let phi = 0.08;
+    let radius = 44;
+    let targetTheta = 0.07;
+    let targetPhi = 0.88;
+    let targetRadius = 47;
+    let enterStartMs = 0;
+    const ENTER_DURATION_MS = 380;
+
+    enter3DRef.current = () => {
+      // Reset to near-top-down flat plane, then ease smoothly into 3D orbit + extruded relief
+      theta = 0.0;
+      phi = 0.08;
+      radius = 44;
+      targetTheta = 0.07;
+      targetPhi = 0.88;
+      targetRadius = 47;
+      terrainMesh.scale.y = 0.001;
+      enterStartMs = performance.now();
+    };
 
     let isDragging = false;
     let pointerDownX = 0;
@@ -467,7 +661,7 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      targetRadius = Math.max(15, Math.min(58, targetRadius + e.deltaY * 0.025));
+      targetRadius = Math.max(16, Math.min(64, targetRadius + e.deltaY * 0.028));
     };
 
     const el = renderer.domElement;
@@ -487,10 +681,59 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
     resizeObserver.observe(container);
 
     let raf = 0;
+    let fadeOutUntilMs = 0;
     const animate = () => {
-      theta += (targetTheta - theta) * 0.14;
-      phi += (targetPhi - phi) * 0.14;
-      radius += (targetRadius - radius) * 0.14;
+      if (!activeRef.current && performance.now() > fadeOutUntilMs) {
+        raf = 0;
+        return;
+      }
+
+      // Step live wind particles onto windCanvas when in animated FLOW mode
+      const { windMode: wm, windFields: wf, viewMode: vm, selectedChannel: ch } = windConfigRef.current;
+      const sc = staticDrapedCanvasRef.current;
+      const wc = windCanvasRef.current;
+      const tc = textureCanvasRef.current;
+      const isAnom = vm === 'ANOMALY_DIFF';
+      if (wm === 'FLOW' && !prefersReducedMotion() && !(isAnom && wf.deltaPeak <= 1e-3) && sc && wc && tc) {
+        const wctx = wc.getContext('2d');
+        const tctx = tc.getContext('2d');
+        if (wctx && tctx && windFlowRef.current) {
+          wctx.save();
+          wctx.globalCompositeOperation = 'destination-in';
+          wctx.fillStyle = 'rgba(0, 0, 0, 0.90)';
+          wctx.fillRect(0, 0, TEX_W, TEX_H);
+          wctx.restore();
+
+          const colourBySpeed = isWindChannel(ch) && !isAnom;
+          const fieldAt = (x: number): WindField => {
+            if (isAnom) return wf.delta;
+            if (vm === 'BASELINE') return wf.base;
+            if (vm === 'SPLIT') return x < TEX_W / 2 ? wf.base : wf.shock;
+            return wf.shock;
+          };
+          windFlowRef.current.step(wctx, toTexProjector, fieldAt, colourBySpeed);
+
+          tctx.clearRect(0, 0, TEX_W, TEX_H);
+          tctx.drawImage(sc, 0, 0);
+          tctx.drawImage(wc, 0, 0);
+          texture.needsUpdate = true;
+        }
+      }
+
+      // Smooth pitch & elevation ease-in on 2D -> 3D entry (~380ms)
+      if (enterStartMs > 0) {
+        const t = Math.min(1, (performance.now() - enterStartMs) / ENTER_DURATION_MS);
+        const ease = 1 - Math.pow(1 - t, 3); // easeOutCubic
+        terrainMesh.scale.y = Math.max(0.001, ease);
+        theta = 0.0 + (targetTheta - 0.0) * ease;
+        phi = 0.08 + (targetPhi - 0.08) * ease;
+        radius = 44 + (targetRadius - 44) * ease;
+        if (t >= 1) enterStartMs = 0;
+      } else {
+        theta += (targetTheta - theta) * 0.14;
+        phi += (targetPhi - phi) * 0.14;
+        radius += (targetRadius - radius) * 0.14;
+      }
 
       camera.position.set(
         target.x + radius * Math.sin(phi) * Math.sin(theta),
@@ -501,10 +744,26 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
       renderer.render(scene, camera);
       raf = requestAnimationFrame(animate);
     };
-    raf = requestAnimationFrame(animate);
+
+    startRafRef.current = () => {
+      if (!activeRef.current) {
+        fadeOutUntilMs = performance.now() + 340;
+      }
+      if (!raf) {
+        raf = requestAnimationFrame(animate);
+      }
+    };
+
+    if (activeRef.current) {
+      enter3DRef.current();
+      raf = requestAnimationFrame(animate);
+    }
 
     return () => {
-      cancelAnimationFrame(raf);
+      if (raf) cancelAnimationFrame(raf);
+      startRafRef.current = null;
+      enter3DRef.current = null;
+      terrainMeshRef.current = null;
       resizeObserver.disconnect();
       el.removeEventListener('pointerdown', onPointerDown);
       el.removeEventListener('pointermove', onPointerMove);
@@ -522,13 +781,27 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
     };
   }, [staticFields]);
 
-  // Update draped texture whenever field, contours, grid, view mode, or shock changes
+  // Start/resume RAF and ease-in pitch + elevation when active toggles
   useEffect(() => {
+    if (active) {
+      enter3DRef.current?.();
+      startRafRef.current?.();
+    } else {
+      startRafRef.current?.(); // runs for 340ms fade-out then pauses
+    }
+  }, [active]);
+
+  // Redraw static draped layer (basemap + field + contours + shock) and static wind arrows if active
+  useEffect(() => {
+    if (!active) return;
+    const sc = staticDrapedCanvasRef.current;
+    const wc = windCanvasRef.current;
     const tc = textureCanvasRef.current;
     const tex = textureRef.current;
-    if (!tc || !tex) return;
-    drawDrapedTexture(
-      tc,
+    if (!sc || !wc || !tc || !tex) return;
+
+    drawStaticDrapedCanvas(
+      sc,
       baseTerrainCanvas,
       fieldImages,
       smooth,
@@ -539,14 +812,43 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
       customSpec,
       isBrushMode
     );
-    tex.needsUpdate = true;
+
+    const wctx = wc.getContext('2d');
+    const isAnom = viewMode === 'ANOMALY_DIFF';
+    if (wctx) {
+      if (windMode === 'OFF' || (isAnom && windFields.deltaPeak <= 1e-3)) {
+        wctx.clearRect(0, 0, TEX_W, TEX_H);
+      } else if (windMode === 'ARROWS' || prefersReducedMotion()) {
+        wctx.clearRect(0, 0, TEX_W, TEX_H);
+        const colourBySpeed = isWindChannel(selectedChannel) && !isAnom;
+        const fieldAt = (x: number): WindField => {
+          if (isAnom) return windFields.delta;
+          if (viewMode === 'BASELINE') return windFields.base;
+          if (viewMode === 'SPLIT') return x < TEX_W / 2 ? windFields.base : windFields.shock;
+          return windFields.shock;
+        };
+        drawWindArrows(wctx, toTexProjector, fieldAt, colourBySpeed, 2);
+      }
+    }
+
+    const tctx = tc.getContext('2d');
+    if (tctx) {
+      tctx.clearRect(0, 0, TEX_W, TEX_H);
+      tctx.drawImage(sc, 0, 0);
+      tctx.drawImage(wc, 0, 0);
+      tex.needsUpdate = true;
+    }
   }, [
+    active,
     baseTerrainCanvas,
     fieldImages,
     smooth,
     contourLayers,
     showGridLines,
     viewMode,
+    selectedChannel,
+    windMode,
+    windFields,
     activePreset,
     customSpec,
     isBrushMode,
@@ -555,7 +857,9 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`absolute inset-0 z-[14] bg-[#050505] ${isBrushMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'}`}
+      className={`absolute inset-0 z-[14] bg-[#050505] transition-opacity duration-300 ease-out ${
+        active ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      } ${isBrushMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'}`}
     />
   );
 };

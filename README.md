@@ -34,42 +34,60 @@
 
 ---
 
-## 3. Quickstart & Serving
+## 3. Collaborator Quickstart & Testing Guide
 
-### 3.1 Offline CPU Inference Server (Root Entrypoint)
-The submission executes directly from the repository root:
-
+### 3.1 Clone & Install Python Dependencies
 ```bash
-# 1. Install dependencies
+git clone https://github.com/Hardik2811-wq/MonsoonFlow10.git
+cd MonsoonFlow10
+
+# Create & activate virtual environment
+python -m venv .venv
+# Windows PowerShell: .\.venv\Scripts\Activate.ps1
+# Linux/macOS:        source .venv/bin/activate
+
+# Install core Python dependencies
 pip install -r requirements.txt
 
-# 2. Start offline inference server on port 8000
+# Install the official DevForge Track 2 evaluation kit (required for pytest & validators)
+pip install git+https://github.com/OfficialAbhinavSingh/yug-monsoon-kit.git
+```
+
+### 3.2 Start Offline CPU Inference Server (Root Entrypoint)
+The pre-trained weights (`checkpoints/model.pt`, 11.11 MB), `stats.json`, `climatology.npy`, and `static.npy` are already committed in `checkpoints/`, so you can test inference immediately without downloading raw `.nc` data:
+
+```bash
 python serve.py --port 8000
 ```
 
-### 3.2 Automated Validation Gates
-Run the official competition verification commands:
+### 3.3 Run Tests & Official Validation Gates
+With `serve.py` running on port `8000`, open a second terminal in the repo root:
 
 ```bash
-# Black-box API schema and latency validation
+# 1. Unit & live-server shock tests (11/11 tests)
+python -m pytest tests/ -v
+
+# 2. Official black-box API schema, shock & 5.0s latency validator
 python -m monsoon_r1.schema_validator http://localhost:8000
 
-# Static anti-cheat & code health audit
-python -c "from monsoon_r1.repo_scan import scan; import json; print(json.dumps(scan('.'), indent=1))"
+# 3. CPU-only 4-thread benchmark
+python inference/benchmark.py
 
-# Evaluation scoring on Pool A (2019–2020)
-python evaluation/eval_scoring.py
+# 4. Static anti-cheat & code health audit
+python -c "from monsoon_r1.repo_scan import scan; import json; print(json.dumps(scan('.'), indent=1))"
 ```
 
-### 3.3 Interactive Digital Twin Dashboard
-The frontend is decoupled in `dashboard/` (React 19 + TypeScript + Vite + Tailwind CSS + Leaflet):
+*(Note: Running `evaluation/eval_scoring.py` or `training/train.py` requires placing `india_climate_train.nc` in `data/raw/` or `data/`.)*
+
+### 3.4 Launch Interactive Digital Twin Dashboard
+The frontend is decoupled in `dashboard/` (React 19 + TypeScript + Vite + Tailwind v4 + Leaflet + Three.js + Recharts; requires Node.js 18+):
 
 ```bash
 cd dashboard
 npm install
 npm run dev
 ```
-Open `http://localhost:5173` in your browser to interact with the map, timeline scrubber, and shock lab.
+Open `http://localhost:5173` in your browser to interact with the 2D/3D India climate map, timeline scrubber, shock lab, and downstream impact panels.
 
 ---
 

@@ -42,6 +42,7 @@ export function calculateDownstreamImpacts(
     let cellCount = 0;
     let basinHeavyCount = 0;
     let basinExtremeCount = 0;
+    let basinMaxP = 0;
 
     const gMin = latLonToGrid(b.latRange[0], b.lonRange[0]);
     const gMax = latLonToGrid(b.latRange[1], b.lonRange[1]);
@@ -51,6 +52,7 @@ export function calculateDownstreamImpacts(
         for (let j = gMin.j; j <= gMax.j; j++) {
           const p = tp[i][j];
           sumPrecip += p;
+          if (p > basinMaxP) basinMaxP = p;
           if (baseTp) sumBasePrecip += baseTp[i][j];
           cellCount++;
 
@@ -66,13 +68,20 @@ export function calculateDownstreamImpacts(
     const meanP = cellCount > 0 ? sumPrecip / cellCount : 0;
     const meanBaseP = cellCount > 0 ? sumBasePrecip / cellCount : meanP;
     const anomalyP = meanP - meanBaseP;
+    const heavyFrac = cellCount > 0 ? (basinHeavyCount + basinExtremeCount) / cellCount : 0;
+    const extremeFrac = cellCount > 0 ? basinExtremeCount / cellCount : 0;
 
-    // Flood risk score: weight of heavy/extreme cells and absolute rain
+    // Normalized flood risk score (0..100):
+    // - Normal July monsoon (~10-15 mm/d mean, 0 extreme) -> ~25-45 (Watch/Advisory)
+    // - Active surge / deluge (Warm BoB, Western Ghats) -> ~55-85 (Warning/Critical)
+    // - Widespread extreme (>= 50 mm/d) -> ~90-100
+    const meanTerm = Math.min(35, meanP * 1.3);
+    const heavyTerm = heavyFrac * 24;
+    const peakTerm = Math.min(20, Math.max(0, basinMaxP - 10) * 0.45);
+    const extremeTerm = Math.min(35, extremeFrac * 70);
     const floodScore = Math.min(
       100,
-      Math.round(
-        (basinExtremeCount * 25 + basinHeavyCount * 8 + meanP * 1.2)
-      )
+      Math.round(meanTerm + heavyTerm + peakTerm + extremeTerm)
     );
 
     // Crop moisture stress: high if severe drought or acute deluge
@@ -105,13 +114,15 @@ export function calculateDownstreamImpacts(
   });
 
   // Composite national indices
+  const avgFlood = basins.reduce((sum, b) => sum + b.floodRiskScore, 0) / basins.length;
   const maxFlood = basins.reduce((max, b) => Math.max(max, b.floodRiskScore), 0);
+  const floodRiskIndex = Math.round(0.55 * avgFlood + 0.45 * maxFlood);
   const avgStress = Math.round(
     basins.reduce((sum, b) => sum + b.cropMoistureStress, 0) / basins.length
   );
 
   return {
-    floodRiskIndex: maxFlood,
+    floodRiskIndex,
     cropMoistureStressIndex: avgStress,
     extremeRainCells: extremeCount,
     heavyRainCells: heavyCount,

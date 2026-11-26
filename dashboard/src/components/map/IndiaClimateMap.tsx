@@ -63,6 +63,9 @@ const STAGE_TRANSFORM = `perspective(${TILT_PERSPECTIVE}px) rotateX(${TILT_DEG}d
 /** The glass side panels (w-80 + 12 px margin, see App.tsx) float over the map's left/right edges. */
 const SIDE_INSET = 332;
 const OVERLAY_GAP = 12;
+/** Glass top bar (Header h-14) and bottom bar (Timeline h-[72px]) float over the map too. */
+const TOP_BAR_H = 56;
+const BOTTOM_BAR_H = 72;
 /** Map-chrome rows at the top (channel bar + layer toggles) and bottom (legend) */
 const TOP_CHROME = 96;
 const DOMAIN_BOUNDS = L.latLngBounds(
@@ -70,13 +73,13 @@ const DOMAIN_BOUNDS = L.latLngBounds(
   [GRID_CONFIG.latMax + HALF, GRID_CONFIG.lonMax + HALF]
 );
 const FIT_PADDING = {
-  paddingTopLeft: L.point(SIDE_INSET + OVERLAY_GAP, TOP_CHROME),
-  paddingBottomRight: L.point(SIDE_INSET + OVERLAY_GAP, OVERLAY_GAP),
+  paddingTopLeft: L.point(SIDE_INSET + OVERLAY_GAP, TOP_BAR_H + TOP_CHROME),
+  paddingBottomRight: L.point(SIDE_INSET + OVERLAY_GAP, BOTTOM_BAR_H + OVERLAY_GAP),
 };
 
 /** Keep the 32x36 domain filling the free area: fit it, and never allow zooming out past that. */
 function fitDomain(map: L.Map): void {
-  const z = map.getBoundsZoom(DOMAIN_BOUNDS, false, L.point(2 * (SIDE_INSET + OVERLAY_GAP), TOP_CHROME + OVERLAY_GAP));
+  const z = map.getBoundsZoom(DOMAIN_BOUNDS, false, L.point(2 * (SIDE_INSET + OVERLAY_GAP), TOP_BAR_H + TOP_CHROME + BOTTOM_BAR_H + OVERLAY_GAP));
   map.setMinZoom(z);
   map.fitBounds(DOMAIN_BOUNDS, { ...FIT_PADDING, animate: false });
 }
@@ -386,7 +389,7 @@ export const IndiaClimateMap: React.FC = () => {
     xctx.save();
     xctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
     xctx.shadowBlur = 4;
-    xctx.strokeStyle = 'rgba(148, 163, 184, 0.55)';
+    xctx.strokeStyle = 'rgba(228, 228, 231, 0.5)';
     xctx.lineWidth = 1;
     xctx.strokeRect(Math.round(dx0) + 0.5, Math.round(dy0) + 0.5, Math.round(dx1 - dx0), Math.round(dy1 - dy0));
     xctx.shadowBlur = 0;
@@ -394,9 +397,9 @@ export const IndiaClimateMap: React.FC = () => {
     xctx.textBaseline = 'bottom';
     const label = 'MODEL DOMAIN · 6.5–37.5°N · 65.5–100.5°E';
     const tw = xctx.measureText(label).width;
-    xctx.fillStyle = 'rgba(11, 15, 23, 0.75)';
+    xctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
     xctx.fillRect(Math.round(dx1) - tw - 10, Math.round(dy1) - 17, tw + 8, 14);
-    xctx.fillStyle = 'rgba(148, 163, 184, 0.9)';
+    xctx.fillStyle = 'rgba(212, 212, 216, 0.9)';
     xctx.fillText(label, Math.round(dx1) - tw - 6, Math.round(dy1) - 5);
     xctx.restore();
 
@@ -440,7 +443,7 @@ export const IndiaClimateMap: React.FC = () => {
     xctx.restore();
 
     if (viewMode === 'SPLIT') {
-      xctx.strokeStyle = '#0284C7';
+      xctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
       xctx.lineWidth = 2;
       xctx.setLineDash([6, 4]);
       xctx.beginPath();
@@ -623,7 +626,7 @@ export const IndiaClimateMap: React.FC = () => {
 
   const toggleBtn = (active: boolean) =>
     `px-2 py-1 rounded transition-colors flex items-center gap-1 ${
-      active ? 'bg-[#1E293B] text-sky-400 font-semibold' : 'hover:text-slate-200'
+      active ? 'bg-white/10 text-white font-semibold' : 'hover:text-zinc-200'
     }`;
 
   const nextWindMode: Record<WindMode, WindMode> = { FLOW: 'ARROWS', ARROWS: 'OFF', OFF: 'FLOW' };
@@ -631,7 +634,7 @@ export const IndiaClimateMap: React.FC = () => {
   return (
     <div
       ref={outerRef}
-      className="relative w-full h-full bg-[#070B11] overflow-hidden select-none"
+      className="relative w-full h-full bg-[#050505] overflow-hidden select-none"
       onMouseMove={handleMouseMove}
       onMouseLeave={() => setHoverInfo(null)}
       onClick={handleTiltedClick}
@@ -660,24 +663,24 @@ export const IndiaClimateMap: React.FC = () => {
 
       {/* Atmospheric depth haze toward the horizon when tilted */}
       {tilt && (
-        <div className="absolute inset-x-0 top-0 h-1/3 z-[15] pointer-events-none bg-gradient-to-b from-[#0B0F17] via-[#0B0F17]/60 to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-2/5 z-[15] pointer-events-none bg-gradient-to-b from-[#050505] via-[#050505]/60 to-transparent" />
       )}
 
       {viewMode === 'SPLIT' && (
-        <div className="absolute top-24 z-20 flex justify-between pointer-events-none text-xs font-mono" style={{ left: SIDE_INSET + 3 * OVERLAY_GAP, right: SIDE_INSET + 3 * OVERLAY_GAP }}>
-          <div className="bg-[#111827]/90 border border-slate-700 px-3 py-1 rounded text-slate-300 shadow">
+        <div className="absolute z-20 flex justify-between pointer-events-none text-xs font-mono" style={{ top: TOP_BAR_H + 96, left: SIDE_INSET + 3 * OVERLAY_GAP, right: SIDE_INSET + 3 * OVERLAY_GAP }}>
+          <div className="bg-black/30 backdrop-blur-2xl backdrop-saturate-150 border border-white/[0.12] px-3 py-1 rounded text-zinc-300 shadow">
             ← BASELINE (P = 0)
           </div>
-          <div className="bg-[#111827]/90 border border-sky-600 px-3 py-1 rounded text-sky-400 shadow">
+          <div className="bg-black/30 backdrop-blur-2xl backdrop-saturate-150 border border-white/25 px-3 py-1 rounded text-white shadow">
             SHOCK MULTIVERSE →
           </div>
         </div>
       )}
 
       {/* Top-left: channel + layer toggles */}
-      <div className="absolute top-3 z-20 flex flex-col items-start gap-2" style={{ left: SIDE_INSET + OVERLAY_GAP }}>
+      <div className="absolute z-20 flex flex-col items-start gap-2" style={{ top: TOP_BAR_H + OVERLAY_GAP, left: SIDE_INSET + OVERLAY_GAP }}>
         <ChannelSelector />
-        <div className="flex items-center bg-[#111827]/95 border border-[#1E293B] rounded p-1 text-xs font-mono text-slate-400 gap-0.5">
+        <div className="flex items-center bg-black/30 backdrop-blur-2xl backdrop-saturate-150 border border-white/[0.12] rounded p-1 text-xs font-mono text-zinc-400 gap-0.5">
           <button onClick={() => setSmooth((p) => !p)} className={toggleBtn(smooth)} title="Bilinear interpolation between cell centres (off: exact 1° cells)">
             <Waves className="w-3.5 h-3.5" />
             <span>{smooth ? 'SMOOTH' : 'CELLS'}</span>
@@ -704,65 +707,65 @@ export const IndiaClimateMap: React.FC = () => {
           </button>
         </div>
         {tilt && (
-          <div className="px-2 py-0.5 rounded bg-[#111827]/90 border border-[#1E293B] text-[10px] font-mono text-slate-500">
+          <div className="px-2 py-0.5 rounded bg-black/30 backdrop-blur-2xl backdrop-saturate-150 border border-white/[0.12] text-[10px] font-mono text-zinc-500">
             3D view · pan/zoom locked · inspector &amp; brush active
           </div>
         )}
         {isAnomaly && windMode !== 'OFF' && windFields.deltaPeak > 1e-3 && (
-          <div className="px-2 py-0.5 rounded bg-[#111827]/90 border border-[#1E293B] text-[10px] font-mono text-slate-500">
+          <div className="px-2 py-0.5 rounded bg-black/30 backdrop-blur-2xl backdrop-saturate-150 border border-white/[0.12] text-[10px] font-mono text-zinc-500">
             wind = Δ(u10, v10) · peak {windFields.deltaPeak.toFixed(2)} m/s · drawn ×{windFields.deltaScale.toFixed(1)} where ≥ 15% of peak
           </div>
         )}
       </div>
 
       {/* Top-right: domain + Day-0 provenance */}
-      <div className="absolute top-3 z-20 flex flex-col items-end gap-2" style={{ right: SIDE_INSET + OVERLAY_GAP }}>
-        <div className="px-2.5 py-1 rounded bg-[#111827]/90 border border-[#1E293B] text-xs font-mono text-slate-300">
-          DOMAIN: <span className="text-sky-400">32x36 (1.0° res)</span>
+      <div className="absolute z-20 flex flex-col items-end gap-2" style={{ top: TOP_BAR_H + OVERLAY_GAP, right: SIDE_INSET + OVERLAY_GAP }}>
+        <div className="px-2.5 py-1 rounded bg-black/30 backdrop-blur-2xl backdrop-saturate-150 border border-white/[0.12] text-xs font-mono text-zinc-300">
+          DOMAIN: <span className="text-white">32x36 (1.0° res)</span>
         </div>
         <div
-          className={`px-2.5 py-1 rounded bg-[#111827]/90 border text-xs font-mono ${
-            apiStatus.initialStateIsSynthetic ? 'border-rose-800 text-rose-300' : 'border-[#1E293B] text-slate-300'
+          className={`px-2.5 py-1 rounded bg-black/30 backdrop-blur-2xl backdrop-saturate-150 border text-xs font-mono ${
+            apiStatus.initialStateIsSynthetic ? 'border-rose-800 text-rose-300' : 'border-white/[0.12] text-zinc-300'
           }`}
         >
-          DAY 0: <span className={apiStatus.initialStateIsSynthetic ? '' : 'text-sky-400'}>{apiStatus.initialStateLabel}</span>
+          DAY 0: <span className={apiStatus.initialStateIsSynthetic ? '' : 'text-white'}>{apiStatus.initialStateLabel}</span>
         </div>
       </div>
 
-      <div className="absolute bottom-3 z-20" style={{ left: SIDE_INSET + OVERLAY_GAP }}>
+      <div className="absolute z-20" style={{ bottom: BOTTOM_BAR_H + OVERLAY_GAP, left: SIDE_INSET + OVERLAY_GAP }}>
         <ColorbarLegend isAnomaly={isAnomaly} maxAbsDelta={maxAbsDelta} contoursOn={showContours} />
       </div>
 
       {hoverInfo && (
-        <div style={{ right: SIDE_INSET + OVERLAY_GAP }} className="absolute bottom-3 z-20 bg-[#111827]/95 border border-[#1E293B] rounded p-3 text-xs font-mono shadow-2xl tabular-nums">
-          <div className="flex items-center gap-2 mb-1.5 text-slate-400 border-b border-slate-800 pb-1">
-            <Crosshair className="w-3.5 h-3.5 text-sky-400" />
+        <div style={{ right: SIDE_INSET + OVERLAY_GAP, bottom: BOTTOM_BAR_H + OVERLAY_GAP }} className="absolute z-20 bg-black/30 backdrop-blur-2xl backdrop-saturate-150 border border-white/[0.12] rounded p-3 text-xs font-mono shadow-2xl tabular-nums">
+          <div className="flex items-center gap-2 mb-1.5 text-zinc-400 border-b border-white/[0.12] pb-1">
+            <Crosshair className="w-3.5 h-3.5 text-zinc-300" />
             <span>
               {hoverInfo.lat.toFixed(1)}°N, {hoverInfo.lon.toFixed(1)}°E
             </span>
-            <span className="text-slate-600">|</span>
-            <span className="text-slate-500">
+            <span className="text-zinc-600">|</span>
+            <span className="text-zinc-500">
               [{hoverInfo.gridI}, {hoverInfo.gridJ}]
             </span>
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <span className="text-slate-500 block text-[10px]">BASELINE</span>
-              <span className="text-slate-200 font-medium">
+              <span className="text-zinc-500 block text-[10px]">BASELINE</span>
+              <span className="text-zinc-200 font-medium">
                 {wireToDisplay(hoverInfo.baseVal, selectedChannel).str} {wireToDisplay(hoverInfo.baseVal, selectedChannel).unit}
               </span>
             </div>
             <div>
-              <span className="text-slate-500 block text-[10px]">SHOCK</span>
-              <span className="text-sky-400 font-medium">
+              <span className="text-zinc-500 block text-[10px]">SHOCK</span>
+              <span className="text-white font-medium">
                 {wireToDisplay(hoverInfo.shockVal, selectedChannel).str} {wireToDisplay(hoverInfo.shockVal, selectedChannel).unit}
               </span>
             </div>
             <div>
-              <span className="text-slate-500 block text-[10px]">ANOMALY Δ</span>
+              <span className="text-zinc-500 block text-[10px]">ANOMALY Δ</span>
               <span
                 className={`font-semibold ${
-                  hoverInfo.delta > 0 ? 'text-orange-400' : hoverInfo.delta < 0 ? 'text-sky-400' : 'text-slate-400'
+                  hoverInfo.delta > 0 ? 'text-orange-400' : hoverInfo.delta < 0 ? 'text-sky-400' : 'text-zinc-400'
                 }`}
               >
                 {displayDeltaString(hoverInfo.delta, selectedChannel)}

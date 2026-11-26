@@ -22,9 +22,6 @@ LAT = np.arange(6.5, 37.5 + 1e-9, 1.0)
 SECONDS_PER_DAY = 86400.0
 METERS_PER_DEG = 111.0e3
 CFL_MAX = 0.95
-# Defaults (module-level so experiments can override before construction)
-# 8 sub-steps of the 3x3 stencil per day: reach <= 8 cells/day (== teleport ceiling is
-# 3 + 8*(k+1), never exceeded); kappa ~0.2 gives isotropic spread sigma ~1.8 cells/day.
 N_SUBSTEPS = 8
 SPEED_RANGE = (0.5, 1.5)
 KAPPA_RANGE = (0.18, 0.20)
@@ -47,7 +44,6 @@ class AnomalyTransport(nn.Module):
         self.n_substeps = n_substeps
         self.s_lo, self.s_hi = speed_range
         self.k_lo, self.k_hi = kappa_range
-        # Per-channel steering-speed factor and diffusivity (sigmoid-bounded)
         self.speed_logit = nn.Parameter(torch.zeros(1, channels, 1, 1))
         self.kappa_logit = nn.Parameter(torch.zeros(1, channels, 1, 1))
         coslat = np.cos(np.deg2rad(LAT)).astype(np.float32)
@@ -62,8 +58,8 @@ class AnomalyTransport(nn.Module):
         """a: (B, C, H, W) anomaly; u_ms, v_ms: (B, 1, H, W) winds in m/s."""
         s, kappa = self.coefficients()
         dt = SECONDS_PER_DAY / self.n_substeps
-        cx = s * u_ms * dt / METERS_PER_DEG * self.inv_dx_deg  # cells per sub-step (eastward +)
-        cy = s * v_ms * dt / METERS_PER_DEG                    # cells per sub-step (northward +)
+        cx = s * u_ms * dt / METERS_PER_DEG * self.inv_dx_deg
+        cy = s * v_ms * dt / METERS_PER_DEG
         budget = CFL_MAX - 4.0 * kappa
         scale = torch.clamp(budget / (cx.abs() + cy.abs() + 1e-6), max=1.0)
         cx = cx * scale

@@ -53,20 +53,20 @@ export const ColorbarLegend: React.FC<Props> = ({ isAnomaly = false, maxAbsDelta
   const anomalyDigits = anomalyHalf < 10 ? 2 : 1;
 
   return (
-    <div className="bg-[#111827]/90 backdrop-blur-sm border border-[#1E293B] rounded p-2.5 shadow-lg select-none text-xs font-mono w-72">
-      <div className="flex justify-between items-center mb-1 text-slate-300">
-        <span className="font-semibold text-slate-100 truncate">
+    <div className="bg-black/30 backdrop-blur-2xl backdrop-saturate-150 border border-white/[0.12] rounded p-2.5 shadow-lg select-none text-xs font-mono w-72">
+      <div className="flex justify-between items-center mb-1 text-zinc-300">
+        <span className="font-semibold text-zinc-100 truncate">
           {isAnomaly ? `ANOMALY Δ ${meta.id.toUpperCase()}` : scale.title}
         </span>
-        <span className="text-slate-400 shrink-0 ml-2">{isAnomaly ? `Δ ${meta.displayUnit}` : scale.unit}</span>
+        <span className="text-zinc-400 shrink-0 ml-2">{isAnomaly ? `Δ ${meta.displayUnit}` : scale.unit}</span>
       </div>
 
       <div
-        className="h-3 w-full rounded border border-slate-700/80 bg-[#0B0F17]"
+        className="h-3 w-full rounded border border-white/[0.12] bg-black/30"
         style={{ backgroundImage: gradientCss }}
       />
 
-      <div className="relative h-4 mt-0.5 text-[11px] text-slate-400 tabular-nums">
+      <div className="relative h-4 mt-0.5 text-[11px] text-zinc-400 tabular-nums">
         {isAnomaly ? (
           <>
             <span className="absolute left-0">-{anomalyHalf.toFixed(anomalyDigits)}</span>
@@ -87,7 +87,7 @@ export const ColorbarLegend: React.FC<Props> = ({ isAnomaly = false, maxAbsDelta
       </div>
 
       {contoursOn && (isAnomaly || selectedChannel === 'tp' || selectedChannel === 'msl') && (
-        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 pt-1 border-t border-slate-800 text-[10px] text-slate-400">
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 pt-1 border-t border-white/[0.12] text-[10px] text-zinc-400">
           {isAnomaly ? (
             <>
               <Swatch color="#FB923C" label="+ plume core (½ peak |Δ|)" />

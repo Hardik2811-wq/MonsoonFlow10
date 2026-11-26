@@ -96,34 +96,32 @@ export const ShockTrajectoryChart: React.FC = () => {
   const tpKey = metricMode === 'PEAK' ? 'peakTp' : 'meanTp';
 
   return (
-    <div className="bg-[#0B0F17]/55 border border-white/10 rounded p-3 mb-4 font-mono">
+    <div className="bg-white/[0.04] border border-white/[0.12] rounded p-3 mb-4 font-mono">
       {/* Header & Mode Toggle */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5">
-          <Activity className="w-3.5 h-3.5 text-sky-400" />
-          <span className="text-[11px] font-medium text-slate-200">
+          <Activity className="w-3.5 h-3.5 text-zinc-300" />
+          <span className="text-[11px] font-medium text-zinc-200">
             SHOCK TRAJECTORY (D1–D10)
           </span>
         </div>
 
-        <div className="flex items-center bg-[#111827] border border-white/10 rounded p-0.5 text-[10px]">
+        <div className="flex items-center bg-black/30 border border-white/[0.12] rounded p-0.5 text-[10px]">
           <button
             onClick={() => setMetricMode('PEAK')}
-            className={`px-1.5 py-0.5 rounded transition-colors ${
-              metricMode === 'PEAK'
-                ? 'bg-[#1E293B] text-sky-400 font-semibold'
-                : 'text-slate-500 hover:text-slate-300'
-            }`}
+            className={`px-1.5 py-0.5 rounded transition-colors ${metricMode === 'PEAK'
+              ? 'bg-white/10 text-white font-semibold'
+              : 'text-zinc-500 hover:text-zinc-300'
+              }`}
           >
             PEAK |Δ|
           </button>
           <button
             onClick={() => setMetricMode('MEAN')}
-            className={`px-1.5 py-0.5 rounded transition-colors ${
-              metricMode === 'MEAN'
-                ? 'bg-[#1E293B] text-sky-400 font-semibold'
-                : 'text-slate-500 hover:text-slate-300'
-            }`}
+            className={`px-1.5 py-0.5 rounded transition-colors ${metricMode === 'MEAN'
+              ? 'bg-white/10 text-white font-semibold'
+              : 'text-zinc-500 hover:text-zinc-300'
+              }`}
           >
             MEAN Δ
           </button>
@@ -131,7 +129,7 @@ export const ShockTrajectoryChart: React.FC = () => {
       </div>
 
       {/* Legend */}
-      <div className="flex items-center justify-between text-[10px] text-slate-400 mb-2 tabular-nums">
+      <div className="flex items-center justify-between text-[10px] text-zinc-400 mb-2 tabular-nums">
         <span className="flex items-center gap-1">
           <span className="w-2 h-0.5 bg-[#EF4444] inline-block" />
           <span>Δ t2m (K)</span>
@@ -156,11 +154,11 @@ export const ShockTrajectoryChart: React.FC = () => {
                 }
               }}
             >
-              <CartesianGrid stroke="#1E293B" strokeDasharray="3 3" vertical={false} />
+              <CartesianGrid stroke="rgba(255, 255, 255, 0.08)" strokeDasharray="3 3" vertical={false} />
               <XAxis
                 dataKey="label"
-                tick={{ fill: '#64748B', fontSize: 10 }}
-                axisLine={{ stroke: '#1E293B' }}
+                tick={{ fill: '#71717A', fontSize: 10 }}
+                axisLine={{ stroke: 'rgba(255, 255, 255, 0.08)' }}
                 tickLine={false}
               />
               <YAxis
@@ -180,12 +178,12 @@ export const ShockTrajectoryChart: React.FC = () => {
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: '#111827',
-                  borderColor: '#334155',
+                  backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                  borderColor: 'rgba(255, 255, 255, 0.12)',
                   borderRadius: '4px',
                   fontSize: '10px',
                   fontFamily: 'monospace',
-                  color: '#F1F5F9',
+                  color: '#F4F4F5',
                 }}
                 formatter={(value, name) => {
                   const num = Number(value);
@@ -202,7 +200,7 @@ export const ShockTrajectoryChart: React.FC = () => {
                 <ReferenceLine
                   yAxisId="t2m"
                   x={`D${currentDay}`}
-                  stroke="#94A3B8"
+                  stroke="#A1A1AA"
                   strokeDasharray="2 2"
                 />
               )}
@@ -229,7 +227,7 @@ export const ShockTrajectoryChart: React.FC = () => {
             </LineChart>
           </ResponsiveContainer>
         ) : (
-          <div className="h-full flex items-center justify-center text-[10px] text-slate-600">
+          <div className="h-full flex items-center justify-center text-[10px] text-zinc-600">
             Awaiting rollout tensor...
           </div>
         )}

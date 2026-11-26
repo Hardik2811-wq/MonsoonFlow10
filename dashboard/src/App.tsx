@@ -17,30 +17,33 @@ export function App() {
     <ShockLabProvider>
       <ClimateDataProvider>
         <TimelineProvider>
-          <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0B0F17] text-slate-100 select-none">
+          {/* The live map fills the whole screen; every piece of chrome floats over it as glass.
+              Header = h-14 (56 px), timeline = h-[72px]; IndiaClimateMap keeps its overlays and
+              domain fit clear of both (TOP_BAR_H / BOTTOM_BAR_H). */}
+          <div className="relative h-screen w-screen overflow-hidden bg-[#050505] text-zinc-100 select-none">
+            <div className="absolute inset-0">
+              <IndiaClimateMap />
+            </div>
+
             {/* Top Meteorological Console Header */}
-            <Header />
+            <div className="absolute top-0 inset-x-0 z-40">
+              <Header />
+            </div>
 
-            {/* Main Instrument Workspace: Shock Lab | India Climate Map | Downstream Impacts */}
-            {/* The map runs full-width underneath; the side panels float over it as glass */}
-            <div className="relative flex-1 overflow-hidden">
-              <div className="absolute inset-0">
-                <IndiaClimateMap />
-              </div>
+            {/* Left: Multiverse Counterfactual Shock Lab */}
+            <div className="absolute left-3 top-[68px] bottom-[84px] z-30 flex">
+              <ShockLabPanel />
+            </div>
 
-              {/* Left: Multiverse Counterfactual Shock Lab */}
-              <div className="absolute left-3 top-3 bottom-3 z-30 flex">
-                <ShockLabPanel />
-              </div>
-
-              {/* Right: Humanitarian & Agricultural Downstream Impact Module */}
-              <div className="absolute right-3 top-3 bottom-3 z-30 flex">
-                <DownstreamImpactPanel />
-              </div>
+            {/* Right: Humanitarian & Agricultural Downstream Impact Module */}
+            <div className="absolute right-3 top-[68px] bottom-[84px] z-30 flex">
+              <DownstreamImpactPanel />
             </div>
 
             {/* Bottom Deck: Forecast Timeline Scrubber (Day 0 - 10) */}
-            <TimelineScrubber />
+            <div className="absolute bottom-0 inset-x-0 z-40">
+              <TimelineScrubber />
+            </div>
           </div>
         </TimelineProvider>
       </ClimateDataProvider>

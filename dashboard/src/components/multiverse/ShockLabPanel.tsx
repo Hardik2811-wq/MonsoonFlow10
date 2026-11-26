@@ -21,19 +21,19 @@ export const ShockLabPanel: React.FC = () => {
   } = useShockLab();
 
   return (
-    <div className="w-80 h-full bg-[#111827]/55 backdrop-blur-xl backdrop-saturate-150 border border-white/10 rounded-xl shadow-[0_8px_32px_rgba(0,0,0,0.45)] p-4 flex flex-col justify-between overflow-y-auto select-none font-mono text-xs">
+    <div className="w-80 h-full border rounded-xl bg-black/40 backdrop-blur-2xl backdrop-saturate-150 border-white/[0.12] shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_12px_32px_rgba(0,0,0,0.45)] p-4 flex flex-col justify-between overflow-y-auto select-none font-mono text-xs">
       <div>
         {/* Panel Header */}
-        <div className="flex items-center justify-between border-b border-white/10 pb-2 mb-4">
+        <div className="flex items-center justify-between border-b border-white/[0.12] pb-2 mb-4">
           <div className="flex items-center gap-2">
-            <Sliders className="w-4 h-4 text-sky-400" />
-            <span className="font-semibold text-slate-100 tracking-wider">
+            <Sliders className="w-4 h-4 text-zinc-300" />
+            <span className="font-semibold text-zinc-100 tracking-wider">
               SHOCK LAB
             </span>
           </div>
           <button
             onClick={resetShock}
-            className="text-[11px] text-slate-400 hover:text-slate-200 flex items-center gap-1 hover:underline"
+            className="text-[11px] text-zinc-400 hover:text-zinc-200 flex items-center gap-1 hover:underline"
           >
             <RefreshCw className="w-3 h-3" />
             <span>RESET (P=0)</span>
@@ -42,7 +42,7 @@ export const ShockLabPanel: React.FC = () => {
 
         {/* Counterfactual Presets */}
         <div className="mb-5">
-          <span className="text-slate-400 block mb-2 font-medium">PRESET SHOCKS</span>
+          <span className="text-zinc-400 block mb-2 font-medium">PRESET SHOCKS</span>
           <div className="space-y-1.5">
             {SHOCK_PRESETS.map((preset) => {
               const isSelected = activePresetId === preset.id;
@@ -50,26 +50,25 @@ export const ShockLabPanel: React.FC = () => {
                 <button
                   key={preset.id}
                   onClick={() => selectPreset(preset.id)}
-                  className={`w-full text-left p-2 rounded border transition-colors ${
-                    isSelected
-                      ? 'bg-[#1E293B] border-sky-500 text-sky-300'
-                      : 'bg-[#0B0F17]/55 border-white/10 text-slate-300 hover:border-slate-700'
-                  }`}
+                  className={`w-full text-left p-2 rounded border transition-colors ${isSelected
+                    ? 'bg-white/10 border-white/25 text-white'
+                    : 'bg-white/[0.04] border-white/[0.12] text-zinc-300 hover:border-white/20'
+                    }`}
                 >
                   <div className="flex justify-between items-center mb-0.5">
-                    <span className="font-semibold text-slate-100">{preset.name}</span>
+                    <span className="font-semibold text-zinc-100">{preset.name}</span>
                     <span className="flex gap-1">
                       {preset.graded && (
-                        <span className="text-[10px] px-1 rounded bg-sky-950 text-sky-300 border border-sky-800">
+                        <span className="text-[10px] px-1 rounded bg-white/[0.06] text-zinc-200 border border-white/20">
                           GRADED
                         </span>
                       )}
-                      <span className="text-[10px] px-1 rounded bg-slate-800 text-slate-400">
+                      <span className="text-[10px] px-1 rounded bg-white/[0.06] text-zinc-400">
                         {preset.category}
                       </span>
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
+                  <p className="text-[11px] text-zinc-400 line-clamp-2 leading-relaxed">
                     {preset.description}
                   </p>
                 </button>
@@ -79,29 +78,28 @@ export const ShockLabPanel: React.FC = () => {
         </div>
 
         {/* Custom 2D Gaussian Shock Brush */}
-        <div className="mb-5 border-t border-white/10 pt-4">
+        <div className="mb-5 border-t border-white/[0.12] pt-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-slate-400 font-medium">
+            <span className="text-zinc-400 font-medium">
               INTERACTIVE GAUSSIAN BRUSH
-              {activePresetId === 'CUSTOM' && <span className="ml-1 text-sky-400">· ACTIVE</span>}
+              {activePresetId === 'CUSTOM' && <span className="ml-1 text-white">· ACTIVE</span>}
             </span>
             <button
               onClick={toggleBrushMode}
-              className={`px-2 py-1 rounded border flex items-center gap-1 transition-colors ${
-                isBrushMode
-                  ? 'bg-sky-600 border-sky-400 text-white font-medium'
-                  : 'bg-[#0B0F17]/55 border-white/10 text-slate-400 hover:text-slate-200'
-              }`}
+              className={`px-2 py-1 rounded border flex items-center gap-1 transition-colors ${isBrushMode
+                ? 'bg-white/10 border-white/25 text-white font-medium'
+                : 'bg-white/[0.04] border-white/[0.12] text-zinc-400 hover:text-zinc-200'
+                }`}
             >
               <Paintbrush className="w-3 h-3" />
               <span>{isBrushMode ? 'BRUSH ACTIVE' : 'PAINT SHOCK'}</span>
             </button>
           </div>
 
-          <div className="space-y-3 bg-[#0B0F17]/55 p-2.5 rounded border border-white/10 tabular-nums">
+          <div className="space-y-3 bg-white/[0.04] p-2.5 rounded border border-white/[0.12] tabular-nums">
             {/* Target Channel */}
             <div>
-              <label className="text-[11px] text-slate-400 block mb-1">
+              <label className="text-[11px] text-zinc-400 block mb-1">
                 TARGET CHANNEL
               </label>
               <select
@@ -112,7 +110,7 @@ export const ShockLabPanel: React.FC = () => {
                   // keep the amplitude inside the new channel's range
                   updateCustomSpec({ channel, magnitude: Math.max(r.min, Math.min(r.max, customSpec.magnitude)) });
                 }}
-                className="w-full bg-[#111827] border border-white/10 rounded p-1 text-slate-200 font-mono text-xs"
+                className="w-full bg-black/30 border border-white/[0.12] rounded p-1 text-zinc-200 font-mono text-xs"
               >
                 {CHANNEL_LIST.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -125,7 +123,7 @@ export const ShockLabPanel: React.FC = () => {
             {/* Shock Center (Lat, Lon) */}
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="text-[11px] text-slate-400 block mb-0.5">
+                <label className="text-[11px] text-zinc-400 block mb-0.5">
                   CENTER LAT
                 </label>
                 <input
@@ -135,11 +133,11 @@ export const ShockLabPanel: React.FC = () => {
                   max="37.5"
                   value={customSpec.centerLat}
                   onChange={(e) => updateCustomSpec({ centerLat: parseFloat(e.target.value) || 20 })}
-                  className="w-full bg-[#111827] border border-white/10 rounded p-1 text-slate-200 font-mono"
+                  className="w-full bg-black/30 border border-white/[0.12] rounded p-1 text-zinc-200 font-mono"
                 />
               </div>
               <div>
-                <label className="text-[11px] text-slate-400 block mb-0.5">
+                <label className="text-[11px] text-zinc-400 block mb-0.5">
                   CENTER LON
                 </label>
                 <input
@@ -149,16 +147,16 @@ export const ShockLabPanel: React.FC = () => {
                   max="100.5"
                   value={customSpec.centerLon}
                   onChange={(e) => updateCustomSpec({ centerLon: parseFloat(e.target.value) || 80 })}
-                  className="w-full bg-[#111827] border border-white/10 rounded p-1 text-slate-200 font-mono"
+                  className="w-full bg-black/30 border border-white/[0.12] rounded p-1 text-zinc-200 font-mono"
                 />
               </div>
             </div>
 
             {/* Perturbation Magnitude */}
             <div>
-              <div className="flex justify-between text-[11px] text-slate-400 mb-0.5">
+              <div className="flex justify-between text-[11px] text-zinc-400 mb-0.5">
                 <span>AMPLITUDE (Δ)</span>
-                <span className="text-sky-400 font-semibold">
+                <span className="text-white font-semibold">
                   {customSpec.magnitude > 0 ? `+${customSpec.magnitude}` : customSpec.magnitude} {CHANNELS[customSpec.channel].wireUnit}
                 </span>
               </div>
@@ -169,15 +167,15 @@ export const ShockLabPanel: React.FC = () => {
                 step={AMPLITUDE_RANGE[customSpec.channel].step}
                 value={customSpec.magnitude}
                 onChange={(e) => updateCustomSpec({ magnitude: parseFloat(e.target.value) })}
-                className="w-full h-1 bg-[#1E293B] rounded appearance-none cursor-pointer"
+                className="w-full h-1 bg-white/10 rounded appearance-none cursor-pointer"
               />
             </div>
 
             {/* Gaussian Radius & Sigma */}
             <div>
-              <div className="flex justify-between text-[11px] text-slate-400 mb-0.5">
+              <div className="flex justify-between text-[11px] text-zinc-400 mb-0.5">
                 <span>GAUSSIAN SIGMA (σ)</span>
-                <span className="text-slate-200">{customSpec.sigmaKm} km</span>
+                <span className="text-zinc-200">{customSpec.sigmaKm} km</span>
               </div>
               <input
                 type="range"
@@ -186,9 +184,9 @@ export const ShockLabPanel: React.FC = () => {
                 step="25"
                 value={customSpec.sigmaKm}
                 onChange={(e) => updateCustomSpec({ sigmaKm: parseInt(e.target.value, 10) })}
-                className="w-full h-1 bg-[#1E293B] rounded appearance-none cursor-pointer"
+                className="w-full h-1 bg-white/10 rounded appearance-none cursor-pointer"
               />
-              <span className="text-[10px] text-slate-500 mt-0.5 block">
+              <span className="text-[10px] text-zinc-500 mt-0.5 block">
                 σ ≈ 300 km (~2.5 grid cells) prevents high-frequency noise spikes.
               </span>
             </div>
@@ -197,7 +195,7 @@ export const ShockLabPanel: React.FC = () => {
       </div>
 
       {/* Physical Realism & Causality Validation Gate */}
-      <div className="border-t border-white/10 pt-3">
+      <div className="border-t border-white/[0.12] pt-3">
         {boundsReport.isValid ? (
           <div className="flex items-center gap-2 p-2 rounded bg-emerald-950/30 border border-emerald-800/40 text-emerald-400">
             <CheckCircle className="w-4 h-4 flex-shrink-0" />

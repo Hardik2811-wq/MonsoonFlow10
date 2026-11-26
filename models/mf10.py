@@ -34,7 +34,7 @@ DAYS_PER_YEAR = 365
 LEAP_DAY_ROW = 31 + 28
 # Per-channel anomaly damping r in [lo, hi] (t2m, tp, u10, v10, msl, tcwv).
 # Thermodynamic fields (t2m, tcwv) carry ocean memory -> floor 0.92 so shocks persist
-# long enough to be transported outward; rain/winds/pressure decorrelate fast -> free.
+# long enough to be transported outward; rain/winds/pressure decorrelate faster -> free.
 DAMP_LO = (0.92, 0.5, 0.5, 0.5, 0.5, 0.92)
 DAMP_HI = 0.995
 

@@ -3,15 +3,15 @@
 
 @layer base {
   :root {
-    --bg-base: #0B0F17;
-    --bg-panel: #111827;
-    --bg-surface: #1E293B;
-    --border-subtle: #1E293B;
-    --border-prominent: #334155;
-    --text-primary: #F1F5F9;
-    --text-secondary: #94A3B8;
-    --text-muted: #64748B;
-    --accent-met: #0284C7;
+    --bg-base: #050505;
+    --bg-panel: #0A0A0A;
+    --bg-surface: rgba(255, 255, 255, 0.06);
+    --border-subtle: rgba(255, 255, 255, 0.08);
+    --border-prominent: rgba(255, 255, 255, 0.16);
+    --text-primary: #F4F4F5;
+    --text-secondary: #A1A1AA;
+    --text-muted: #71717A;
+    --accent-met: #E4E4E7;
   }
 
   body {
@@ -26,19 +26,19 @@
 
 /* Custom styling for Leaflet inside dark meteorological instrument */
 .leaflet-container {
-  background: #070B11 !important;
+  background: #050505 !important;
   font-family: inherit;
 }
 
 .leaflet-bar a {
-  background-color: #111827 !important;
-  border-color: #1E293B !important;
-  color: #94A3B8 !important;
+  background-color: rgba(0, 0, 0, 0.6) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: #A1A1AA !important;
 }
 
 .leaflet-bar a:hover {
-  background-color: #1E293B !important;
-  color: #F1F5F9 !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: #F4F4F5 !important;
 }
 
 /* Tabular figures for telemetry */
@@ -48,11 +48,11 @@
 
 /* Custom range input styling */
 input[type="range"] {
-  accent-color: #0284C7;
+  accent-color: #E4E4E7;
 }
 
 /* Thin dark scrollbars (the glass side panels scroll over the map) */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(148, 163, 184, 0.25) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }

@@ -27,7 +27,7 @@ from models.physics_losses import PhysicsAwareLoss
 
 
 SKILL_LEAD_DAYS = (1, 4, 8)
-INCREMENT_L2_WEIGHT = 0.05  # gentle anchor keeping the neural increment dA_k near the prior
+INCREMENT_L2_WEIGHT = 0.005  # relaxed anchor so dA_k learns synoptic weather evolution
 
 
 @torch.no_grad()
@@ -93,14 +93,14 @@ def run_curriculum_training(
 
     criterion = PhysicsAwareLoss(
         stats=stats,
-        heavy_rain_weight=0.1,
-        var_band_weight=0.1,
-        min_variance_ratio=0.40,
-        max_variance_ratio=2.00,
-        l1_weight=0.1,
+        heavy_rain_weight=0.25,
+        var_band_weight=0.15,
+        min_variance_ratio=0.45,
+        max_variance_ratio=1.90,
+        l1_weight=0.15,
     ).to(device)
 
-    # "full": ~35-40 min on 4-core CPU. "cpu_fast": ~3-5 min CPU budget (default without CUDA).
+    # "full": ~35-40 min on 4-core CPU. "cpu_fast": ~5-6 min CPU budget (default without CUDA).
     if schedule is None:
         schedule = "full" if device.type == "cuda" else "cpu_fast"
     if schedule == "full":
@@ -112,10 +112,10 @@ def run_curriculum_training(
         ]
     else:
         stages = [
-            {"stage": 1, "steps": 1,  "epochs": 2, "lr": 5.0e-4, "stride": 8,  "batch_size": 32},
-            {"stage": 2, "steps": 3,  "epochs": 2, "lr": 3.0e-4, "stride": 16, "batch_size": 32},
-            {"stage": 3, "steps": 5,  "epochs": 2, "lr": 2.0e-4, "stride": 20, "batch_size": 24},
-            {"stage": 4, "steps": 10, "epochs": 2, "lr": 1.5e-4, "stride": 20, "batch_size": 16},
+            {"stage": 1, "steps": 1,  "epochs": 1, "lr": 4.0e-4, "stride": 4,  "batch_size": 32},
+            {"stage": 2, "steps": 3,  "epochs": 2, "lr": 3.0e-4, "stride": 6,  "batch_size": 32},
+            {"stage": 3, "steps": 5,  "epochs": 3, "lr": 3.0e-4, "stride": 6,  "batch_size": 24},
+            {"stage": 4, "steps": 10, "epochs": 5, "lr": 3.0e-4, "stride": 6,  "batch_size": 16},
         ]
     print(f"[Agent-ML] Curriculum schedule: {schedule}", flush=True)
 

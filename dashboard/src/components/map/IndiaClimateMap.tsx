@@ -28,6 +28,7 @@ import {
   type Segment,
 } from '../../services/fieldRaster';
 import { loadStaticFields, type StaticFields } from '../../services/staticFields';
+import { resolvePerturbation } from '../../services/perturbation';
 import { WindFlow, drawWindArrows, type WindField } from '../../services/windFlow';
 import { latLonToGrid, wireToDisplay, displayDeltaString } from '../../services/physicalUnits';
 import { ColorbarLegend } from './ColorbarLegend';
@@ -153,7 +154,7 @@ export const IndiaClimateMap: React.FC = () => {
 
   const { baselineRollout, shockRollout, initialCondition, selectedChannel, viewMode, apiStatus } =
     useClimateData();
-  const { currentDay } = useTimeline();
+  const { fractionalDay, isPlaying } = useTimeline();
   const { customSpec, updateCustomSpec, isBrushMode, activePreset } = useShockLab();
 
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
@@ -168,15 +169,53 @@ export const IndiaClimateMap: React.FC = () => {
   const chIdx = CHANNELS[selectedChannel].index;
   const isAnomaly = viewMode === 'ANOMALY_DIFF';
 
-  // ---- Live frames for the current lead day -------------------------------------------------
-  const baseFrame: ChannelTensor = useMemo(
-    () => (currentDay === 0 ? initialCondition : baselineRollout[currentDay - 1] ?? initialCondition),
-    [currentDay, baselineRollout, initialCondition]
+  // ---- Live frames with smooth fractional temporal interpolation for 60fps PLAY -------------
+  const perturbation = useMemo(
+    () => resolvePerturbation(activePreset, customSpec, initialCondition),
+    [activePreset, customSpec, initialCondition]
   );
-  const shockFrame: ChannelTensor = useMemo(
-    () => (currentDay === 0 ? initialCondition : shockRollout[currentDay - 1] ?? initialCondition),
-    [currentDay, shockRollout, initialCondition]
-  );
+
+  const shockDay0: ChannelTensor = useMemo(() => {
+    if (!perturbation) return initialCondition;
+    return initialCondition.map((ch, c) =>
+      ch.map((row, i) =>
+        row.map((val, j) => {
+          const v = val + perturbation[c][i][j];
+          // Clamp non-negative physical channels (tp=1, tcwv=5)
+          return c === 1 || c === 5 ? Math.max(0, v) : v;
+        })
+      )
+    );
+  }, [initialCondition, perturbation]);
+
+  const lerpGrid = useCallback((a: Grid2D, b: Grid2D, t: number): Grid2D => {
+    if (t <= 1e-4) return a;
+    if (t >= 1 - 1e-4) return b;
+    return a.map((row, i) => row.map((v, j) => v + (b[i][j] - v) * t));
+  }, []);
+
+  const { baseFrame, shockFrame } = useMemo(() => {
+    const d0 = Math.min(10, Math.max(0, Math.floor(fractionalDay)));
+    const d1 = Math.min(10, d0 + 1);
+    const alpha = fractionalDay - d0;
+
+    const b0 = d0 === 0 ? initialCondition : baselineRollout[d0 - 1] ?? initialCondition;
+    const b1 = d1 === 0 ? initialCondition : baselineRollout[d1 - 1] ?? initialCondition;
+    const s0 = d0 === 0 ? shockDay0 : shockRollout[d0 - 1] ?? shockDay0;
+    const s1 = d1 === 0 ? shockDay0 : shockRollout[d1 - 1] ?? shockDay0;
+
+    if (alpha <= 1e-4 || d0 === d1) {
+      return { baseFrame: b0, shockFrame: s0 };
+    }
+    const baseInterp = b0.map((g, c) =>
+      c === chIdx || c === CHANNELS.u10.index || c === CHANNELS.v10.index ? lerpGrid(g, b1[c], alpha) : g
+    );
+    const shockInterp = s0.map((g, c) =>
+      c === chIdx || c === CHANNELS.u10.index || c === CHANNELS.v10.index ? lerpGrid(g, s1[c], alpha) : g
+    );
+    return { baseFrame: baseInterp, shockFrame: shockInterp };
+  }, [fractionalDay, initialCondition, shockDay0, baselineRollout, shockRollout, chIdx, lerpGrid]);
+
   const currentBaselineGrid = baseFrame[chIdx];
   const currentShockGrid = shockFrame[chIdx];
 
@@ -211,7 +250,7 @@ export const IndiaClimateMap: React.FC = () => {
 
   // ---- Field imagery ----------------------------------------------------------------------
   const fieldImages = useMemo(() => {
-    const S = smooth ? SMOOTH_PX_PER_CELL : 1;
+    const S = smooth ? (isPlaying ? 6 : SMOOTH_PX_PER_CELL) : 1;
     const m = smooth ? EDGE_MARGIN_CELLS : 0;
     const colour = (v: number) => channelRgba(v, selectedChannel);
     if (isAnomaly) {
@@ -226,7 +265,7 @@ export const IndiaClimateMap: React.FC = () => {
       };
     }
     return { left: buildFieldImage(currentShockGrid, colour, S, m), right: null, margin: m };
-  }, [smooth, selectedChannel, isAnomaly, viewMode, deltaGrid, maxAbsDelta, currentBaselineGrid, currentShockGrid]);
+  }, [smooth, isPlaying, selectedChannel, isAnomaly, viewMode, deltaGrid, maxAbsDelta, currentBaselineGrid, currentShockGrid]);
 
   // ---- Isolines and glowing extreme cores -------------------------------------------------
   const contourLayers = useMemo<ContourLayer[]>(() => {

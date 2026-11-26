@@ -791,6 +791,14 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
     }
   }, [active]);
 
+  // Clear stale wind trails immediately when switching viewMode (e.g. BASELINE <-> SHOCK <-> SPLIT)
+  useEffect(() => {
+    const wc = windCanvasRef.current;
+    if (!wc) return;
+    const wctx = wc.getContext('2d');
+    wctx?.clearRect(0, 0, TEX_W, TEX_H);
+  }, [viewMode]);
+
   // Redraw static draped layer (basemap + field + contours + shock) and static wind arrows if active
   useEffect(() => {
     if (!active) return;

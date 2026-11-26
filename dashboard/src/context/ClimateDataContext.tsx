@@ -47,6 +47,19 @@ export const ClimateDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [selectedChannel, setSelectedChannel] = useState<ChannelId>('tp');
   const [viewMode, setViewMode] = useState<ViewMode>('SHOCK');
 
+  // Auto-switch from BASELINE -> SHOCK when the user actively selects or edits a non-zero shock
+  // (manual clicks on Baseline (P=0) in Header are preserved when shock config does not change).
+  const isInitialShockMount = useRef(true);
+  useEffect(() => {
+    if (isInitialShockMount.current) {
+      isInitialShockMount.current = false;
+      return;
+    }
+    if (activePreset.id !== 'ZERO_SHOCK') {
+      setViewMode((prev) => (prev === 'BASELINE' ? 'SHOCK' : prev));
+    }
+  }, [activePreset, customSpec]);
+
   const [apiStatus, setApiStatus] = useState<ApiStatus>({
     serverOnline: false,
     isLive: false,

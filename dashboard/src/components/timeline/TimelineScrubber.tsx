@@ -10,9 +10,11 @@ import { Play, Pause, SkipBack, SkipForward, RotateCcw } from 'lucide-react';
 export const TimelineScrubber: React.FC = () => {
   const {
     currentDay,
+    fractionalDay,
     isPlaying,
     playbackSpeed,
     setCurrentDay,
+    setFractionalDay,
     togglePlay,
     setPlaybackSpeed,
     stepForward,
@@ -102,9 +104,9 @@ export const TimelineScrubber: React.FC = () => {
             type="range"
             min={0}
             max={10}
-            step={1}
-            value={currentDay}
-            onChange={(e) => setCurrentDay(parseInt(e.target.value, 10))}
+            step={0.02}
+            value={fractionalDay}
+            onChange={(e) => setFractionalDay(parseFloat(e.target.value))}
             className="w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer z-10 accent-zinc-200"
           />
         </div>

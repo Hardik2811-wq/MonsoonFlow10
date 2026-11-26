@@ -279,13 +279,29 @@ export const IndiaClimateMap: React.FC = () => {
       ];
     }
     if (viewMode === 'SPLIT') {
+      const shockPlume: ContourLayer[] =
+        activePreset.id !== 'ZERO_SHOCK' && rawMaxAbsDelta > 1e-6
+          ? [
+              { segs: contourSegments(deltaGrid, 0.5 * rawMaxAbsDelta), style: { color: '#FB923C', width: 1.4, glow: 8, dash: [4, 3] }, side: 'right' },
+              { segs: contourSegments(deltaGrid.map((r) => r.map((d) => -d)), 0.5 * rawMaxAbsDelta), style: { color: '#38BDF8', width: 1.4, glow: 8, dash: [4, 3] }, side: 'right' },
+            ]
+          : [];
       return [
         ...contourLayersFor(currentBaselineGrid, selectedChannel, 'left'),
         ...contourLayersFor(currentShockGrid, selectedChannel, 'right'),
+        ...shockPlume,
       ];
     }
-    return contourLayersFor(viewMode === 'BASELINE' ? currentBaselineGrid : currentShockGrid, selectedChannel, 'all');
-  }, [showContours, isAnomaly, rawMaxAbsDelta, deltaGrid, viewMode, currentBaselineGrid, currentShockGrid, selectedChannel]);
+    const baseLayers = contourLayersFor(viewMode === 'BASELINE' ? currentBaselineGrid : currentShockGrid, selectedChannel, 'all');
+    if (viewMode === 'SHOCK' && activePreset.id !== 'ZERO_SHOCK' && rawMaxAbsDelta > 1e-6) {
+      return [
+        ...baseLayers,
+        { segs: contourSegments(deltaGrid, 0.5 * rawMaxAbsDelta), style: { color: '#FB923C', width: 1.4, glow: 8, dash: [4, 3] }, side: 'all' },
+        { segs: contourSegments(deltaGrid.map((r) => r.map((d) => -d)), 0.5 * rawMaxAbsDelta), style: { color: '#38BDF8', width: 1.4, glow: 8, dash: [4, 3] }, side: 'all' },
+      ];
+    }
+    return baseLayers;
+  }, [showContours, isAnomaly, rawMaxAbsDelta, deltaGrid, viewMode, activePreset.id, currentBaselineGrid, currentShockGrid, selectedChannel]);
 
   // ---- Wind fields for the flow layer -------------------------------------------------------
   const windFields = useMemo(() => {
@@ -483,7 +499,8 @@ export const IndiaClimateMap: React.FC = () => {
     xctx.restore();
 
     if (viewMode === 'SPLIT') {
-      xctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      xctx.save();
+      xctx.strokeStyle = 'rgba(255, 255, 255, 0.65)';
       xctx.lineWidth = 2;
       xctx.setLineDash([6, 4]);
       xctx.beginPath();
@@ -491,6 +508,17 @@ export const IndiaClimateMap: React.FC = () => {
       xctx.lineTo(w / 2, h);
       xctx.stroke();
       xctx.setLineDash([]);
+      xctx.font = '600 10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+      xctx.textBaseline = 'middle';
+      const labelY = Math.round(h * 0.5);
+      xctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+      xctx.fillRect(w / 2 - 72, labelY - 10, 64, 20);
+      xctx.fillRect(w / 2 + 8, labelY - 10, 54, 20);
+      xctx.fillStyle = 'rgba(212, 212, 216, 0.95)';
+      xctx.fillText('BASELINE', w / 2 - 64, labelY);
+      xctx.fillStyle = '#FFFFFF';
+      xctx.fillText('SHOCK', w / 2 + 16, labelY);
+      xctx.restore();
     }
   }, [
     showRelief,

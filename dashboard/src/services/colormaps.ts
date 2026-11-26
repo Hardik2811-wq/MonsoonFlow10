@@ -132,14 +132,15 @@ export function getColorForChannel(value: number, channel: ChannelId): RgbColor 
   return evaluateStops(v, PALETTES[channel]);
 }
 
-const FIELD_ALPHA = 0.36;
+const FIELD_ALPHA = 0.32;
 
 /** Palette colour + transparency rule for a physical value. */
 export function channelRgba(value: number, channel: ChannelId): RgbaColor {
   const c = getColorForChannel(value, channel);
   if (channel === 'tp') {
-    // Dry -> fully transparent; heavier rain -> more opaque
-    const a = smoothstep(0.2, 1.5, value) * (0.34 + 0.38 * Math.min(1, value / 30));
+    // Dry (< 0.5 mm/day) -> completely transparent; heavier rain -> more opaque
+    if (value < 0.5) return { ...c, a: 0 };
+    const a = smoothstep(0.5, 1.8, value) * (0.34 + 0.38 * Math.min(1, value / 30));
     return { ...c, a };
   }
   return { ...c, a: FIELD_ALPHA };

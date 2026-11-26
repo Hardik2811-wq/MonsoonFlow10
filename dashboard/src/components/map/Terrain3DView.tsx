@@ -160,7 +160,7 @@ async function loadEsriDomainBasemap(): Promise<HTMLCanvasElement | null> {
   const sxW = sxRight - sxLeft;
 
   octx.save();
-  octx.filter = 'contrast(1.26) brightness(1.28)';
+  octx.filter = 'brightness(1.30) contrast(1.20)';
   octx.imageSmoothingEnabled = true;
   // Reproject Web Mercator Y to linear latitude in 2px strips
   for (let py = 0; py < TEX_H; py += 2) {
@@ -320,16 +320,27 @@ function drawStaticDrapedCanvas(
   }
   ctx.restore();
 
-  // 6. Split divider
+  // 6. Split divider + BASELINE | SHOCK labels on 3D surface
   if (viewMode === 'SPLIT') {
     ctx.save();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.72)';
     ctx.lineWidth = 2.5;
     ctx.setLineDash([7, 5]);
     ctx.beginPath();
     ctx.moveTo(TEX_W / 2, 0);
     ctx.lineTo(TEX_W / 2, TEX_H);
     ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = '600 13px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+    ctx.textBaseline = 'middle';
+    const labelY = Math.round(TEX_H * 0.14);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
+    ctx.fillRect(TEX_W / 2 - 86, labelY - 12, 76, 24);
+    ctx.fillRect(TEX_W / 2 + 10, labelY - 12, 66, 24);
+    ctx.fillStyle = 'rgba(212, 212, 216, 0.95)';
+    ctx.fillText('BASELINE', TEX_W / 2 - 78, labelY);
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText('SHOCK', TEX_W / 2 + 18, labelY);
     ctx.restore();
   }
 }

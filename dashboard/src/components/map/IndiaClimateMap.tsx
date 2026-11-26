@@ -1,6 +1,7 @@
 /**
  * IndiaClimateMap.tsx - Leaflet 32x36 India Domain Climate Map Viewer
  * Bounds: 6.5°N - 37.5°N, 65.5°E - 100.5°E
+ * Supports Baseline, Shock Multiverse, Dual Split-Screen, and Anomaly Diff views.
  */
 
 import React, { useEffect, useRef, useState, useMemo } from 'react';
@@ -88,14 +89,19 @@ export const IndiaClimateMap: React.FC = () => {
       attributionControl: false,
     });
 
-    // Dark minimalist tile layer (CartoDB Dark Matter)
+    // Dark high-contrast basemap (Esri World Dark Gray - Free public tier, NO API KEY required)
     L.tileLayer(
-      'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
       {
-        subdomains: 'abcd',
-        maxZoom: 19,
+        maxZoom: 16,
+        attribution: 'Tiles &copy; Esri',
       }
     ).addTo(map);
+
+    // Invalidate map size after layout stabilizes
+    setTimeout(() => {
+      map.invalidateSize();
+    }, 150);
 
     // Bounding box boundary rectangle for India domain (6.5-37.5N, 65.5-100.5E)
     const bounds: L.LatLngBoundsExpression = [
@@ -182,6 +188,7 @@ export const IndiaClimateMap: React.FC = () => {
       const height = canvas.height;
       ctx.clearRect(0, 0, width, height);
 
+      const splitX = width / 2;
       const cellHalfDeg = GRID_CONFIG.resolutionDeg / 2;
 
       for (let i = 0; i < GRID_CONFIG.nLat; i++) {
@@ -203,17 +210,37 @@ export const IndiaClimateMap: React.FC = () => {
           const delta = shockVal - baseVal;
 
           let colorRgb;
-          let alpha = 0.78;
+          let alpha = 0.60;
 
           if (viewMode === 'ANOMALY_DIFF') {
+            if (Math.abs(delta) < 0.05) {
+              // Zero anomaly: keep completely transparent to expose underlying geography
+              continue;
+            }
             colorRgb = getAnomalyDivergentColor(delta, maxAbsDelta);
-            // Higher transparency near zero diff
-            alpha = Math.min(0.85, 0.2 + (Math.abs(delta) / maxAbsDelta) * 0.65);
+            alpha = Math.min(0.85, 0.35 + (Math.abs(delta) / maxAbsDelta) * 0.50);
           } else if (viewMode === 'BASELINE') {
+            if (selectedChannel === 'tp' && baseVal < 0.5) {
+              // Dry weather (0 mm rain): transparent so India terrain/coastline is fully visible
+              continue;
+            }
             colorRgb = getColorForChannel(baseVal, selectedChannel);
+            alpha = selectedChannel === 'tp' ? Math.min(0.85, 0.40 + (baseVal / 40) * 0.45) : 0.55;
+          } else if (viewMode === 'SPLIT') {
+            const cellCenterX = rectX + rectW / 2;
+            const isLeft = cellCenterX < splitX;
+            const val = isLeft ? baseVal : shockVal;
+            if (selectedChannel === 'tp' && val < 0.5) continue;
+            colorRgb = getColorForChannel(val, selectedChannel);
+            alpha = selectedChannel === 'tp' ? Math.min(0.85, 0.40 + (val / 40) * 0.45) : 0.55;
           } else {
-            // SHOCK or SPLIT view
+            // SHOCK view
+            if (selectedChannel === 'tp' && shockVal < 0.5) {
+              // Dry weather (0 mm rain): transparent so India terrain/coastline is fully visible
+              continue;
+            }
             colorRgb = getColorForChannel(shockVal, selectedChannel);
+            alpha = selectedChannel === 'tp' ? Math.min(0.85, 0.40 + (shockVal / 40) * 0.45) : 0.55;
           }
 
           ctx.fillStyle = rgbToCss(colorRgb, alpha);
@@ -226,14 +253,26 @@ export const IndiaClimateMap: React.FC = () => {
           }
         }
       }
-    };
 
-    render();
+      // Draw vertical divider if in SPLIT mode
+      if (viewMode === 'SPLIT') {
+        ctx.strokeStyle = '#0284C7';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.beginPath();
+        ctx.moveTo(splitX, 0);
+        ctx.lineTo(splitX, height);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    };
 
     const handleResizeOrMove = () => {
       const size = map.getSize();
-      canvas.width = size.x;
-      canvas.height = size.y;
+      if (size.x > 0 && size.y > 0) {
+        canvas.width = size.x;
+        canvas.height = size.y;
+      }
       render();
     };
 
@@ -303,6 +342,18 @@ export const IndiaClimateMap: React.FC = () => {
         ref={canvasRef}
         className="absolute inset-0 pointer-events-none z-10"
       />
+
+      {/* Split-Screen Header Banners if in SPLIT mode */}
+      {viewMode === 'SPLIT' && (
+        <div className="absolute top-14 inset-x-0 z-20 flex justify-between px-12 pointer-events-none text-xs font-mono">
+          <div className="bg-[#111827]/90 border border-slate-700 px-3 py-1 rounded text-slate-300 shadow">
+            ← BASELINE (P = 0)
+          </div>
+          <div className="bg-[#111827]/90 border border-sky-600 px-3 py-1 rounded text-sky-400 shadow">
+            SHOCK MULTIVERSE →
+          </div>
+        </div>
+      )}
 
       {/* Top Map Controls: Channel Selector & Layer Toggles */}
       <div className="absolute top-3 left-3 z-20 flex items-center gap-2">

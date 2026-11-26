@@ -77,10 +77,22 @@
     "checkpoint": true
   },
   "inference_files": [
+    "data\\__init__.py",
+    "data\\dataset.py",
+    "data\\preprocessing.py",
+    "data\\static_fields.py",
+    "data\\statistics.py",
     "inference\\__init__.py",
     "inference\\loader.py",
     "inference\\predictor.py",
     "inference\\schemas.py",
+    "models\\__init__.py",
+    "models\\convlstm.py",
+    "models\\decoder.py",
+    "models\\encoder.py",
+    "models\\mf10.py",
+    "models\\physics_losses.py",
+    "models\\transport.py",
     "resources\\yug-monsoon-kit\\monsoon_r1\\client.py",
     "resources\\yug-monsoon-kit\\monsoon_r1\\contract.py",
     "resources\\yug-monsoon-kit\\monsoon_r1\\repo_scan.py",
@@ -90,5 +102,5 @@
     "serve.py"
   ],
   "git_nc_files": [],
-  "repo_size_gb": 0.3155688997358084
+  "repo_size_gb": 0.3323245719075203
 }

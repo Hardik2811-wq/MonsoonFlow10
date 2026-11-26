@@ -24,7 +24,15 @@ export interface SimulateResponse {
 }
 
 export interface ApiStatus {
+  /** Health endpoint reachable right now. */
+  serverOnline: boolean;
+  /** Both the displayed baseline AND shock rollouts came from the live server. */
   isLive: boolean;
+  /** Reason the synthetic fallback was used for the displayed rollouts, if any. */
+  fallbackReason: string | null;
+  /** Day-0 initial condition description and whether it is synthetic. */
+  initialStateLabel: string;
+  initialStateIsSynthetic: boolean;
   isSimulating: boolean;
   latencyMs: number;
   endpoint: string;

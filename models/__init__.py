@@ -3,6 +3,7 @@ from .encoder import SpatialEncoder
 from .convlstm import ConvLSTM
 from .decoder import ResidualDecoder
 from .mf10 import MonsoonFlow10
+from .transport import AnomalyTransport
 from .physics_losses import PhysicsAwareLoss
 
 __all__ = [
@@ -10,5 +11,6 @@ __all__ = [
     "ConvLSTM",
     "ResidualDecoder",
     "MonsoonFlow10",
+    "AnomalyTransport",
     "PhysicsAwareLoss",
 ]

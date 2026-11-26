@@ -18,8 +18,8 @@ export interface DownstreamImpactSummary {
   floodRiskIndex: number;          // 0 - 100 composite index
   cropMoistureStressIndex: number; // 0 - 100 composite index
   extremeRainCells: number;        // count of cells with tp >= 50 mm/day
-  heavyRainCells: number;          // count of cells with tp >= 10 mm/day
-  drySpellCells: number;           // count of agrarian cells with tp < 1 mm/day under high heat
+  heavyRainCells: number;          // count of cells with tp >= 10 mm/day (incl. extreme)
+  drySpellCells: number;           // count of cells with tp < 2 mm/day under t2m > 305 K
   highRiskAreaKm2: number;
   basins: BasinImpact[];
 }

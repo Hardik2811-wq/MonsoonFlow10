@@ -3,7 +3,7 @@
  * across India's key meteorological and agricultural river basins.
  */
 
-import type { ChannelTensor } from '../types/climate';
+import { GRID_CONFIG, LATS, type ChannelTensor } from '../types/climate';
 import { MONSOON_BASINS, type BasinImpact, type DownstreamImpactSummary } from '../types/impacts';
 import { latLonToGrid } from './physicalUnits';
 
@@ -15,9 +15,26 @@ export function calculateDownstreamImpacts(
   const t2m = state[0]; // Temperature grid [32, 36] in K
   const baseTp = baselineState ? baselineState[1] : null;
 
+  // Grid-wide counts over all 32x36 cells (each cell counted once; basins overlap, so
+  // basin loops must not feed these totals).
   let extremeCount = 0; // tp >= 50 mm/day
-  let heavyCount = 0;   // tp >= 10 mm/day
-  let drySpellCount = 0;
+  let heavyCount = 0; // tp >= 10 mm/day (includes extreme cells)
+  let drySpellCount = 0; // tp < 2 mm/day under t2m > 305 K
+  let extremeAreaKm2 = 0;
+  const kmPerDeg = GRID_CONFIG.approxKmPerDeg;
+  for (let i = 0; i < GRID_CONFIG.nLat; i++) {
+    // 1 deg x 1 deg cell area shrinks with cos(latitude)
+    const cellAreaKm2 = kmPerDeg * kmPerDeg * Math.cos((LATS[i] * Math.PI) / 180) * GRID_CONFIG.resolutionDeg ** 2;
+    for (let j = 0; j < GRID_CONFIG.nLon; j++) {
+      const p = tp[i][j];
+      if (p >= 50) {
+        extremeCount++;
+        extremeAreaKm2 += cellAreaKm2;
+      }
+      if (p >= 10) heavyCount++;
+      if (p < 2.0 && t2m[i][j] > 305) drySpellCount++;
+    }
+  }
 
   const basins: BasinImpact[] = MONSOON_BASINS.map((b) => {
     let sumPrecip = 0;
@@ -39,12 +56,8 @@ export function calculateDownstreamImpacts(
 
           if (p >= 50) {
             basinExtremeCount++;
-            extremeCount++;
           } else if (p >= 10) {
             basinHeavyCount++;
-            heavyCount++;
-          } else if (p < 2.0 && t2m[i][j] > 305) {
-            drySpellCount++;
           }
         }
       }
@@ -103,7 +116,7 @@ export function calculateDownstreamImpacts(
     extremeRainCells: extremeCount,
     heavyRainCells: heavyCount,
     drySpellCells: drySpellCount,
-    highRiskAreaKm2: extremeCount * 12300, // 1 deg cell ~ 12,300 km²
+    highRiskAreaKm2: Math.round(extremeAreaKm2),
     basins,
   };
 }

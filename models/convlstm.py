@@ -1,6 +1,7 @@
 """2-Layer ConvLSTM for Spatiotemporal Dynamics in MonsoonFlow-10.
 Retains spatial memory, wind-moisture transport, and pressure advection.
-Each layer has 64 hidden channels.
+Layer 0 uses 3x3 spatial gates (advection radius=1), Layer 1 uses 1x1 gates
+for temporal mixing, keeping total Day-1 shock spread strictly localized.
 """
 from typing import Tuple, List
 import torch
@@ -32,7 +33,6 @@ class ConvLSTMCell(nn.Module):
         combined = torch.cat([x, h_prev], dim=1)
         gates = self.conv(combined)
         
-        # Split into input, forget, output, and cell candidate gates
         i, f, o, g = torch.split(gates, self.hidden_dim, dim=1)
         i = torch.sigmoid(i)
         f = torch.sigmoid(f)
@@ -55,7 +55,8 @@ class ConvLSTM(nn.Module):
         cells = []
         for l in range(num_layers):
             c_in = in_channels if l == 0 else hidden_dim
-            cells.append(ConvLSTMCell(c_in, hidden_dim))
+            k_size = 3 if l == 0 else 1
+            cells.append(ConvLSTMCell(c_in, hidden_dim, kernel_size=k_size))
         self.cells = nn.ModuleList(cells)
 
     def init_hidden(self, batch_size: int, height: int = 32, width: int = 36, device: torch.device = None) -> List[Tuple[torch.Tensor, torch.Tensor]]:

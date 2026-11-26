@@ -1,8 +1,9 @@
 """Chronological dataset splitting and preprocessing for MonsoonFlow-10.
 Enforces strict chronological partitioning:
-- Train: 2005-01-01 to 2018-12-31
-- Val:   2019-01-01 to 2020-12-31
-- Test:  2021-01-01 to 2021-12-31 (Sealed holdout)
+- Train: calendar years 2005..2018 (inclusive)
+- Val:   calendar years 2019..2020 (inclusive)
+- Test:  calendar year 2021 (Sealed holdout)
+Splits are defined by integer year ranges (no date literals).
 Zero random shuffling to prevent temporal auto-correlation data leakage.
 """
 from __future__ import annotations
@@ -10,6 +11,11 @@ import datetime as dt
 from pathlib import Path
 from typing import Dict, Tuple
 import numpy as np
+
+# Inclusive (first_year, last_year) ranges for the chronological split
+TRAIN_YEARS = (2005, 2018)
+VAL_YEARS = (2019, 2020)
+TEST_YEARS = (2021, 2021)
 import xarray as xr
 
 CHANNELS = ("t2m", "tp", "u10", "v10", "msl", "tcwv")
@@ -80,10 +86,11 @@ def chronological_split(
     data: np.ndarray,
     dates: np.ndarray
 ) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
-    """Strict chronological splitting into train, val, and test partitions."""
-    train_mask = (dates >= 20050101) & (dates <= 20181231)
-    val_mask = (dates >= 20190101) & (dates <= 20201231)
-    test_mask = (dates >= 20210101) & (dates <= 20211231)
+    """Strict chronological splitting into train, val, and test partitions (by integer year)."""
+    years = np.asarray(dates).astype(np.int64) // 10000
+    train_mask = (years >= TRAIN_YEARS[0]) & (years <= TRAIN_YEARS[1])
+    val_mask = (years >= VAL_YEARS[0]) & (years <= VAL_YEARS[1])
+    test_mask = (years >= TEST_YEARS[0]) & (years <= TEST_YEARS[1])
 
     splits = {
         "train": (data[train_mask], dates[train_mask]),
@@ -92,8 +99,8 @@ def chronological_split(
     }
 
     print(f"[Agent-ML] Chronological split complete:")
-    print(f"  Train (2005-2018): {splits['train'][0].shape[0]} days ({splits['train'][1][0]} to {splits['train'][1][-1]})")
-    print(f"  Val   (2019-2020): {splits['val'][0].shape[0]} days ({splits['val'][1][0]} to {splits['val'][1][-1]})")
-    print(f"  Test  (2021):      {splits['test'][0].shape[0]} days ({splits['test'][1][0]} to {splits['test'][1][-1]})")
+    print(f"  Train {TRAIN_YEARS}: {splits['train'][0].shape[0]} days ({splits['train'][1][0]} to {splits['train'][1][-1]})")
+    print(f"  Val   {VAL_YEARS}: {splits['val'][0].shape[0]} days ({splits['val'][1][0]} to {splits['val'][1][-1]})")
+    print(f"  Test  {TEST_YEARS}: {splits['test'][0].shape[0]} days ({splits['test'][1][0]} to {splits['test'][1][-1]})")
 
     return splits

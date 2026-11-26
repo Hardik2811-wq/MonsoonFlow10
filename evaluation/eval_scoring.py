@@ -170,9 +170,22 @@ def evaluate_rollouts(
     # Causality Points (15 pts)
     if shock_results:
         caus_pts = causality_points(shock_results, null_ok, max_pts=15.0)
+        shock_names = ["warm_ocean", "monsoon_stall"]
+        shock_details = {}
+        for idx_s, res_s in enumerate(shock_results):
+            name = res_s.get("name") or (shock_names[idx_s] if idx_s < len(shock_names) else f"shock_{idx_s}")
+            shock_details[name] = res_s
+        scorecard["dynamics_multiverse"]["details"] = {
+            "null_consistent": bool(null_ok),
+            "shocks": shock_details,
+        }
     else:
         # Default placeholder if shocks evaluated separately
         caus_pts = 15.0 if null_ok else 7.5
+        scorecard["dynamics_multiverse"]["details"] = {
+            "null_consistent": bool(null_ok),
+            "shocks": {},
+        }
     scorecard["dynamics_multiverse"]["causality_pts"] = float(caus_pts)
     scorecard["dynamics_multiverse"]["total_pts"] = float(anti_blur_pts + caus_pts)
 
@@ -188,8 +201,8 @@ def evaluate_rollouts(
     return scorecard
 
 
-def evaluate_checkpoint_model(checkpoint_path: str, num_eval_windows: int = 50) -> dict:
-    """Evaluate a saved PyTorch checkpoint directly against Pool A validation set."""
+def evaluate_checkpoint_model(checkpoint_path: str, num_eval_windows: int = 50, split: str = "val") -> dict:
+    """Evaluate a saved PyTorch checkpoint directly against Pool A (val) or sealed 2021 holdout (test)."""
     import torch
     from data.preprocessing import load_raw_dataset, chronological_split
     from data.dataset import MonsoonDataset
@@ -219,10 +232,10 @@ def evaluate_checkpoint_model(checkpoint_path: str, num_eval_windows: int = 50) 
     model.load_state_dict(state)
     model.eval()
 
-    # 2. Build Validation Set
+    # 2. Build Evaluation Set (val = Pool A 2019-2020, test = Sealed 2021 Holdout)
     raw_data, raw_dates = load_raw_dataset(nc_candidate)
     splits = chronological_split(raw_data, raw_dates)
-    val_data, val_dates = splits["val"]
+    val_data, val_dates = splits[split]
 
     val_ds = MonsoonDataset(val_data, val_dates, stats, static_fields, t_in=3, t_rollout=10, step_stride=4)
     val_loader = DataLoader(val_ds, batch_size=16, shuffle=False)
@@ -254,7 +267,23 @@ def evaluate_checkpoint_model(checkpoint_path: str, num_eval_windows: int = 50) 
     y_pred = np.concatenate(pred_list, axis=0)[:num_eval_windows]
     y_true = np.concatenate(true_list, axis=0)[:num_eval_windows]
     y_persist = np.concatenate(persist_list, axis=0)[:num_eval_windows]
-    y_clim = y_persist.copy()  # fallback
+
+    # Build real Climatology reference for the exact evaluated windows
+    if climatology is not None:
+        stride = 4
+        for w_idx in range(len(y_pred)):
+            start_idx = w_idx * stride
+            c_steps = []
+            for k in range(10):
+                d_int = int(val_dates[start_idx + 3 + k])
+                d_obj = dt.date(d_int // 10000, d_int // 100 % 100, d_int % 100)
+                ref = dt.date(2000, d_obj.month, d_obj.day)
+                doy_idx = (ref - dt.date(2000, 1, 1)).days
+                c_steps.append(climatology[doy_idx])
+            clim_list.append(np.array(c_steps, dtype=np.float32))
+        y_clim = np.array(clim_list, dtype=np.float32)
+    else:
+        y_clim = y_persist.copy()
 
     # Causality shock check on single window
     shock_results = []
@@ -263,27 +292,32 @@ def evaluate_checkpoint_model(checkpoint_path: str, num_eval_windows: int = 50) 
     if isinstance(sample_tensor, np.ndarray):
         sample_tensor = torch.from_numpy(sample_tensor)
     in_sample = sample_tensor.unsqueeze(0)  # (1, 3, 10, 32, 36)
+    mean_scale = np.array(stats["mean"], dtype=np.float32)
     with torch.no_grad():
         base_norm = model(in_sample, steps=10).cpu().numpy()
         null_norm = model(in_sample, steps=10, perturbation=torch.zeros((1, 6, 32, 36))).cpu().numpy()
         d_null = np.max(np.abs(null_norm - base_norm))
         null_ok = bool(d_null < 1e-3)
 
-        # Warm ocean shock (+3K BoB)
+        # Warm ocean shock (+3K t2m, +15% physical tcwv in BoB)
         p_warm = torch.zeros((1, 6, 32, 36), dtype=torch.float32)
         m_bob = box_mask(BOX_BAY_OF_BENGAL)
         p_warm[0, 0, m_bob] = 3.0 / float(std_scale[0])
+        tcwv_phys_bob = in_sample[0, -1, 5, m_bob] * float(std_scale[5]) + float(mean_scale[5])
+        p_warm[0, 5, m_bob] = (0.15 * tcwv_phys_bob) / float(std_scale[5])
         warm_norm = model(in_sample, steps=10, perturbation=p_warm).cpu().numpy()
         base_phys = base_norm[0] * std_scale[None, :, None, None]
         warm_phys = warm_norm[0] * std_scale[None, :, None, None]
         ck_warm = causality_checks(base_phys, warm_phys, BOX_BAY_OF_BENGAL, std_scale)
         shock_results.append(ck_warm)
 
-        # Monsoon stall shock (-40% AS wind)
+        # Monsoon stall shock (-40% physical u10 and v10 in Arabian Sea)
         p_stall = torch.zeros((1, 6, 32, 36), dtype=torch.float32)
         m_as = box_mask(BOX_ARABIAN_SEA)
-        p_stall[0, 2, m_as] = -0.40 * in_sample[0, -1, 2, m_as]
-        p_stall[0, 3, m_as] = -0.40 * in_sample[0, -1, 3, m_as]
+        u_phys_as = in_sample[0, -1, 2, m_as] * float(std_scale[2]) + float(mean_scale[2])
+        v_phys_as = in_sample[0, -1, 3, m_as] * float(std_scale[3]) + float(mean_scale[3])
+        p_stall[0, 2, m_as] = (-0.40 * u_phys_as) / float(std_scale[2])
+        p_stall[0, 3, m_as] = (-0.40 * v_phys_as) / float(std_scale[3])
         stall_norm = model(in_sample, steps=10, perturbation=p_stall).cpu().numpy()
         stall_phys = stall_norm[0] * std_scale[None, :, None, None]
         ck_stall = causality_checks(base_phys, stall_phys, BOX_ARABIAN_SEA, std_scale)
@@ -291,6 +325,9 @@ def evaluate_checkpoint_model(checkpoint_path: str, num_eval_windows: int = 50) 
 
     scorecard = evaluate_rollouts(y_pred, y_true, y_persist, y_clim, shock_results=shock_results, null_ok=null_ok)
     return scorecard
+
+
+def run_evaluation(server_url: str | None = None, checkpoint_path: str | None = None, num_eval_windows: int = 50) -> dict:
     """Run full official evaluation on Pool A (2019-2020) against server or model."""
     from data.preprocessing import load_raw_dataset, chronological_split
     import requests
@@ -411,18 +448,18 @@ def main():
     parser.add_argument("--server", type=str, default="http://127.0.0.1:8000", help="Live server endpoint to evaluate")
     parser.add_argument("--checkpoint", type=str, default="checkpoints/model.pt", help="Path to model weights checkpoint")
     parser.add_argument("--windows", type=int, default=50, help="Number of validation windows to sample")
+    parser.add_argument("--split", type=str, default="val", choices=["val", "test"], help="Chronological split to evaluate")
     args = parser.parse_args()
 
-    import datetime as dt
     print("=" * 70)
-    print("  OFFICIAL 100-POINT COMPETITION GRADER AUDIT — POOL A (2019-2020)")
+    print(f"  OFFICIAL 100-POINT COMPETITION GRADER AUDIT — SPLIT: {args.split.upper()}")
     print("=" * 70)
 
     ckpt_file = Path(args.checkpoint)
     try:
         if ckpt_file.exists():
-            print(f"[Agent-QA] Auditing trained checkpoint: {ckpt_file}")
-            scorecard = evaluate_checkpoint_model(str(ckpt_file), num_eval_windows=args.windows)
+            print(f"[Agent-QA] Auditing trained checkpoint: {ckpt_file} on split={args.split}")
+            scorecard = evaluate_checkpoint_model(str(ckpt_file), num_eval_windows=args.windows, split=args.split)
         else:
             print(f"[Agent-QA] Checkpoint not found at {ckpt_file}. Querying live server: {args.server}")
             scorecard = run_evaluation(server_url=args.server, num_eval_windows=args.windows)
@@ -441,7 +478,8 @@ def main():
         print(f"TOTAL PREDICTED SCORE:      {scorecard['total_score']:.1f} / 100.0")
         print("=" * 70)
 
-        out_path = REPO_ROOT / "evaluation" / "eval_scorecard_pool_a.json"
+        out_name = "eval_scorecard_pool_a.json" if args.split == "val" else "eval_scorecard_2021_holdout.json"
+        out_path = REPO_ROOT / "evaluation" / out_name
         with open(out_path, "w") as f:
             json.dump(scorecard, f, indent=2)
         print(f"Scorecard saved to: {out_path}\n")

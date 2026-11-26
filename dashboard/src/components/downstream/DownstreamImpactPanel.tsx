@@ -7,6 +7,7 @@ import React, { useMemo } from 'react';
 import { useClimateData } from '../../context/ClimateDataContext';
 import { useTimeline } from '../../context/TimelineContext';
 import { calculateDownstreamImpacts } from '../../services/impactCalculator';
+import { ShockTrajectoryChart } from '../anomaly/ShockTrajectoryChart';
 import { CloudRain, Sprout, TrendingUp } from 'lucide-react';
 
 export const DownstreamImpactPanel: React.FC = () => {
@@ -92,6 +93,9 @@ export const DownstreamImpactPanel: React.FC = () => {
           </div>
         </div>
 
+        {/* Shock Propagation Trajectory (Day 1 - Day 10) */}
+        <ShockTrajectoryChart />
+
         {/* Heavy Precipitation Threshold Counters */}
         <div className="bg-[#0B0F17] border border-[#1E293B] rounded p-3 mb-4 tabular-nums">
           <span className="text-[11px] text-slate-400 block mb-2 font-medium">
@@ -111,7 +115,7 @@ export const DownstreamImpactPanel: React.FC = () => {
               </span>
             </div>
             <div className="flex justify-between items-center text-slate-300">
-              <span className="text-slate-400">High-Risk Inundation Area</span>
+              <span className="text-slate-400">Extreme-Rain Area (≥ 50 mm/d)</span>
               <span className="font-semibold text-slate-200">
                 {impacts.highRiskAreaKm2.toLocaleString()} km²
               </span>
@@ -168,7 +172,7 @@ export const DownstreamImpactPanel: React.FC = () => {
 
       {/* Humanitarian Lens Footer Note */}
       <div className="border-t border-[#1E293B] pt-3 text-[10px] text-slate-500 leading-normal">
-        Real-time physical aggregation over 32x36 grid. Regional thresholds aligned with IMD severe monsoon warning protocols.
+        Computed from the displayed rollout tensors. Cell counts and area cover the full 32x36 grid (area ∝ cos lat). Flood risk and crop stress are heuristic indices for comparing scenarios, not IMD warning categories. 10 mm/day is the grader's heavy-rain threshold.
       </div>
     </div>
   );

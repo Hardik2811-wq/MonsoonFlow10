@@ -14,10 +14,14 @@ import numpy as np
 CHANNELS = ("t2m", "tp", "u10", "v10", "msl", "tcwv")
 
 
+# Days before each month in a leap year: every calendar day (incl. Feb 29) gets its own slot
+_LEAP_MONTH_DAYS = (31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+_LEAP_MONTH_OFFSET = tuple(int(sum(_LEAP_MONTH_DAYS[:m])) for m in range(12))
+
+
 def _doy_index(d: dt.date) -> int:
-    """Return index 0..365 for day of year, where Feb 29 has its own slot (using leap year 2000)."""
-    ref = dt.date(2000, d.month, d.day)
-    return (ref - dt.date(2000, 1, 1)).days
+    """Return index 0..365 for day of year, where Feb 29 has its own slot (leap-year indexing)."""
+    return _LEAP_MONTH_OFFSET[d.month - 1] + d.day - 1
 
 
 def compute_training_stats(

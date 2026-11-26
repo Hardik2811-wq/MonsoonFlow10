@@ -70,25 +70,30 @@ export const Header: React.FC = () => {
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#111827] border border-[#1E293B] text-slate-300">
           <Zap className="w-3.5 h-3.5 text-amber-400" />
           <span>
-            LATENCY: <strong className="text-slate-100">{apiStatus.latencyMs} ms</strong>
+            {apiStatus.isLive ? 'MODEL' : 'LOCAL'} LATENCY: <strong className="text-slate-100">{apiStatus.latencyMs} ms</strong>
           </span>
         </div>
 
-        {/* Backend Heartbeat & Model Name */}
-        <div
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded border ${
-            apiStatus.isLive
-              ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-400'
-              : 'bg-slate-800/60 border-slate-700 text-slate-400'
-          }`}
-        >
-          <Server className="w-3.5 h-3.5" />
-          <span className="font-semibold">
-            {apiStatus.isLive
-              ? `LIVE :8000 [${apiStatus.modelName}]`
-              : 'STANDALONE CPU'}
-          </span>
-        </div>
+        {/* Data provenance: is what's on screen real model output? */}
+        {(() => {
+          const pending = apiStatus.modelName.toLowerCase().includes('pending');
+          const tone = apiStatus.isLive && !pending
+            ? 'bg-emerald-950/40 border-emerald-800/60 text-emerald-400'
+            : apiStatus.isLive && pending
+            ? 'bg-amber-950/40 border-amber-800/60 text-amber-300'
+            : 'bg-rose-950/40 border-rose-800/60 text-rose-300';
+          const text = apiStatus.isLive
+            ? pending
+              ? `LIVE :8000 [${apiStatus.modelName}] · weights pending, server is serving persistence`
+              : `LIVE :8000 [${apiStatus.modelName}]`
+            : `SYNTHETIC DEMO · not model output${apiStatus.fallbackReason ? ` (${apiStatus.fallbackReason})` : ''}`;
+          return (
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded border ${tone}`} title={text}>
+              <Server className="w-3.5 h-3.5" />
+              <span className="font-semibold max-w-[22rem] truncate">{text}</span>
+            </div>
+          );
+        })()}
       </div>
     </header>
   );

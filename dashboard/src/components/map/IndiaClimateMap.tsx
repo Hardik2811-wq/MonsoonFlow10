@@ -30,7 +30,7 @@ export const IndiaClimateMap: React.FC = () => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const shockCircleRef = useRef<L.Circle | null>(null);
+  const shockCircleRef = useRef<L.Layer | null>(null);
 
   const {
     baselineRollout,
@@ -38,10 +38,11 @@ export const IndiaClimateMap: React.FC = () => {
     initialCondition,
     selectedChannel,
     viewMode,
+    apiStatus,
   } = useClimateData();
 
   const { currentDay } = useTimeline();
-  const { customSpec, updateCustomSpec, isBrushMode } = useShockLab();
+  const { customSpec, updateCustomSpec, isBrushMode, activePreset } = useShockLab();
 
   const [hoverInfo, setHoverInfo] = useState<HoverInfo | null>(null);
   const [showGridLines, setShowGridLines] = useState<boolean>(false);
@@ -133,19 +134,33 @@ export const IndiaClimateMap: React.FC = () => {
       shockCircleRef.current = null;
     }
 
-    if (isBrushMode || customSpec.magnitude !== 0) {
-      const circle = L.circle([customSpec.centerLat, customSpec.centerLon], {
-        radius: customSpec.radiusKm * 1000,
+    const half = GRID_CONFIG.resolutionDeg / 2;
+    if (activePreset.box) {
+      // Graded shock: outline the exact cells box_mask() selects (cell edges = centres +/- 0.5 deg)
+      const [la0, la1, lo0, lo1] = activePreset.box.box;
+      const latLo = Math.ceil(la0 - GRID_CONFIG.latMin) + GRID_CONFIG.latMin;
+      const latHi = Math.floor(la1 - GRID_CONFIG.latMin) + GRID_CONFIG.latMin;
+      const lonLo = Math.ceil(lo0 - GRID_CONFIG.lonMin) + GRID_CONFIG.lonMin;
+      const lonHi = Math.floor(lo1 - GRID_CONFIG.lonMin) + GRID_CONFIG.lonMin;
+      shockCircleRef.current = L.rectangle(
+        [
+          [latLo - half, lonLo - half],
+          [latHi + half, lonHi + half],
+        ],
+        { color: '#0284C7', fillColor: '#0284C7', fillOpacity: 0.12, weight: 1.5, dashArray: '4, 4' }
+      ).addTo(map);
+    } else if (isBrushMode || activePreset.id === 'CUSTOM' || activePreset.spec) {
+      const spec = activePreset.id === 'CUSTOM' || isBrushMode ? customSpec : activePreset.spec ?? customSpec;
+      shockCircleRef.current = L.circle([spec.centerLat, spec.centerLon], {
+        radius: spec.radiusKm * 1000,
         color: '#0284C7',
         fillColor: '#0284C7',
         fillOpacity: 0.12,
         weight: 1.5,
         dashArray: '4, 4',
       }).addTo(map);
-
-      shockCircleRef.current = circle;
     }
-  }, [customSpec, isBrushMode]);
+  }, [customSpec, isBrushMode, activePreset]);
 
   // Map click handler for interactive shock painting
   useEffect(() => {
@@ -213,7 +228,7 @@ export const IndiaClimateMap: React.FC = () => {
           let alpha = 0.60;
 
           if (viewMode === 'ANOMALY_DIFF') {
-            if (Math.abs(delta) < 0.05) {
+            if (Math.abs(delta) < 0.01 * maxAbsDelta) {
               // Zero anomaly: keep completely transparent to expose underlying geography
               continue;
             }
@@ -377,6 +392,13 @@ export const IndiaClimateMap: React.FC = () => {
       <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
         <div className="px-2.5 py-1 rounded bg-[#111827]/90 border border-[#1E293B] text-xs font-mono text-slate-300">
           DOMAIN: <span className="text-sky-400">32x36 (1.0° res)</span>
+        </div>
+        <div
+          className={`px-2.5 py-1 rounded bg-[#111827]/90 border text-xs font-mono ${
+            apiStatus.initialStateIsSynthetic ? 'border-rose-800 text-rose-300' : 'border-[#1E293B] text-slate-300'
+          }`}
+        >
+          DAY 0: <span className={apiStatus.initialStateIsSynthetic ? '' : 'text-sky-400'}>{apiStatus.initialStateLabel}</span>
         </div>
       </div>
 

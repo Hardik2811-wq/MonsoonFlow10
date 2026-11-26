@@ -3,9 +3,9 @@
  */
 
 import React from 'react';
-import { SHOCK_PRESETS } from '../../types/shocks';
+import { AMPLITUDE_RANGE, SHOCK_PRESETS } from '../../types/shocks';
 import { useShockLab } from '../../context/ShockLabContext';
-import { CHANNEL_LIST } from '../../types/climate';
+import { CHANNEL_LIST, CHANNELS, type ChannelId } from '../../types/climate';
 import { AlertTriangle, CheckCircle, Paintbrush, RefreshCw, Sliders } from 'lucide-react';
 
 export const ShockLabPanel: React.FC = () => {
@@ -58,8 +58,15 @@ export const ShockLabPanel: React.FC = () => {
                 >
                   <div className="flex justify-between items-center mb-0.5">
                     <span className="font-semibold text-slate-100">{preset.name}</span>
-                    <span className="text-[10px] px-1 rounded bg-slate-800 text-slate-400">
-                      {preset.category}
+                    <span className="flex gap-1">
+                      {preset.graded && (
+                        <span className="text-[10px] px-1 rounded bg-sky-950 text-sky-300 border border-sky-800">
+                          GRADED
+                        </span>
+                      )}
+                      <span className="text-[10px] px-1 rounded bg-slate-800 text-slate-400">
+                        {preset.category}
+                      </span>
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 line-clamp-2 leading-relaxed">
@@ -74,7 +81,10 @@ export const ShockLabPanel: React.FC = () => {
         {/* Custom 2D Gaussian Shock Brush */}
         <div className="mb-5 border-t border-[#1E293B] pt-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-slate-400 font-medium">INTERACTIVE GAUSSIAN BRUSH</span>
+            <span className="text-slate-400 font-medium">
+              INTERACTIVE GAUSSIAN BRUSH
+              {activePresetId === 'CUSTOM' && <span className="ml-1 text-sky-400">· ACTIVE</span>}
+            </span>
             <button
               onClick={toggleBrushMode}
               className={`px-2 py-1 rounded border flex items-center gap-1 transition-colors ${
@@ -96,7 +106,12 @@ export const ShockLabPanel: React.FC = () => {
               </label>
               <select
                 value={customSpec.channel}
-                onChange={(e) => updateCustomSpec({ channel: e.target.value as any })}
+                onChange={(e) => {
+                  const channel = e.target.value as ChannelId;
+                  const r = AMPLITUDE_RANGE[channel];
+                  // keep the amplitude inside the new channel's range
+                  updateCustomSpec({ channel, magnitude: Math.max(r.min, Math.min(r.max, customSpec.magnitude)) });
+                }}
                 className="w-full bg-[#111827] border border-[#1E293B] rounded p-1 text-slate-200 font-mono text-xs"
               >
                 {CHANNEL_LIST.map((c) => (
@@ -144,14 +159,14 @@ export const ShockLabPanel: React.FC = () => {
               <div className="flex justify-between text-[11px] text-slate-400 mb-0.5">
                 <span>AMPLITUDE (Δ)</span>
                 <span className="text-sky-400 font-semibold">
-                  {customSpec.magnitude > 0 ? `+${customSpec.magnitude}` : customSpec.magnitude}
+                  {customSpec.magnitude > 0 ? `+${customSpec.magnitude}` : customSpec.magnitude} {CHANNELS[customSpec.channel].wireUnit}
                 </span>
               </div>
               <input
                 type="range"
-                min="-15"
-                max="30"
-                step="0.5"
+                min={AMPLITUDE_RANGE[customSpec.channel].min}
+                max={AMPLITUDE_RANGE[customSpec.channel].max}
+                step={AMPLITUDE_RANGE[customSpec.channel].step}
                 value={customSpec.magnitude}
                 onChange={(e) => updateCustomSpec({ magnitude: parseFloat(e.target.value) })}
                 className="w-full h-1 bg-[#1E293B] rounded appearance-none cursor-pointer"

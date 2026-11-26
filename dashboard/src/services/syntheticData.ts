@@ -1,11 +1,11 @@
 /**
- * syntheticData.ts - High-fidelity synthetic monsoon climate simulation engine
- * Provides realistic 3-day historical input conditions and physics-informed 10-day rollouts.
+ * syntheticData.ts - OFFLINE FALLBACK ONLY.
+ * Analytic (made-up) monsoon-like fields and a toy diffusion/advection rollout, used only when
+ * public/data/initial_state.json or the live serve.py cannot be reached. Never model output;
+ * the UI labels anything produced here as SYNTHETIC.
  */
 
 import { GRID_CONFIG, type ChannelTensor, type SimulationRollout } from '../types/climate';
-import type { GaussianShockSpec } from '../types/shocks';
-import { generateGaussianShock2D } from './gaussianBrush';
 
 export function createZeroTensor(): ChannelTensor {
   return Array.from({ length: 6 }, () =>
@@ -100,21 +100,18 @@ export function generate3DayClimatologicalHistory(): ChannelTensor[] {
  */
 export function simulateOfflineRollout(
   initialState: ChannelTensor,
-  shockSpec: GaussianShockSpec | null
+  perturbation: ChannelTensor | null
 ): SimulationRollout {
   const rollout: SimulationRollout = [];
-  let currentState: ChannelTensor = JSON.parse(JSON.stringify(initialState));
+  const currentStateInit: ChannelTensor = JSON.parse(JSON.stringify(initialState));
+  let currentState = currentStateInit;
 
-  if (shockSpec && shockSpec.magnitude !== 0) {
-    const shockGrid = generateGaussianShock2D(shockSpec);
-    const chIdx = ['t2m', 'tp', 'u10', 'v10', 'msl', 'tcwv'].indexOf(shockSpec.channel);
-    if (chIdx >= 0) {
+  if (perturbation) {
+    for (let c = 0; c < 6; c++) {
       for (let i = 0; i < GRID_CONFIG.nLat; i++) {
         for (let j = 0; j < GRID_CONFIG.nLon; j++) {
-          currentState[chIdx][i][j] += shockGrid[i][j];
-          if (shockSpec.channel === 'tp') {
-            currentState[chIdx][i][j] = Math.max(0, currentState[chIdx][i][j]);
-          }
+          currentState[c][i][j] += perturbation[c][i][j];
+          if (c === 1 || c === 5) currentState[c][i][j] = Math.max(0, currentState[c][i][j]);
         }
       }
     }

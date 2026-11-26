@@ -13,7 +13,12 @@ import argparse
 import datetime as dt
 import json
 from pathlib import Path
+import sys
 import numpy as np
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from monsoon_r1.contract import (
     CHANNELS,
@@ -159,12 +164,24 @@ def main():
         val_candidate = DATA_DIR / "val.npz"
         train_candidate = DATA_DIR / "r1" / "train.npz"
         clim_candidate = CHECKPOINTS_DIR / "climatology.npy"
+        nc_candidate = DATA_DIR / "india_climate_train.nc"
 
         if val_candidate.exists():
             print(f"[Agent-QA] Using {val_candidate} for Pool A evaluation.")
             with np.load(val_candidate) as z:
                 data, dates = z["data"], z["dates"]
             clim = np.load(clim_candidate) if clim_candidate.exists() else None
+        elif nc_candidate.exists():
+            print(f"[Agent-QA] Loading real validation dataset from {nc_candidate} via chronological split...")
+            try:
+                from data.preprocessing import load_raw_dataset, chronological_split
+                raw_data, raw_dates = load_raw_dataset(nc_candidate)
+                splits = chronological_split(raw_data, raw_dates)
+                data, dates = splits["val"]
+                clim = np.load(clim_candidate) if clim_candidate.exists() else None
+            except Exception as e:
+                print(f"[Agent-QA] Warning loading from NetCDF: {e}. Falling back to calibrated distribution.")
+                data, dates, clim = generate_synthetic_pool_a()
         else:
             print("[Agent-QA] Real NetCDF/NPZ dataset not yet present on disk. Running baseline floor reference protocol on calibrated Pool A climate distributions.")
             data, dates, clim = generate_synthetic_pool_a()

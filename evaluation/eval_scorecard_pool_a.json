@@ -1,0 +1,36 @@
+{
+  "admission_gate": {
+    "passed": false,
+    "violations": [
+      "Failed to beat Day 4 Persistence: Pred 75.051 >= Persist 72.151"
+    ],
+    "beat_day4_persistence": false,
+    "day4_pred_rmse": 75.05097824463327,
+    "day4_persist_rmse": 72.15147884365435
+  },
+  "forecast_skill": {
+    "total_pts": 0.3611535884702526,
+    "rmse_skill_pts": 0.0,
+    "csi_pts": 0.3611535884702526,
+    "details": {},
+    "overall_rmse_skill_score": -0.466931674487703,
+    "overall_csi_skill_score": 0.002407690589801684
+  },
+  "dynamics_multiverse": {
+    "total_pts": 12.083333333333334,
+    "anti_blur_pts": 8.333333333333334,
+    "causality_pts": 3.75,
+    "details": {},
+    "mean_day8_variance_ratios": {
+      "t2m": 0.9552779197692871,
+      "tp": 8.831578254699707,
+      "u10": 1.3126890659332275,
+      "v10": 1.0432969331741333,
+      "msl": 1.2655441761016846,
+      "tcwv": 0.492025762796402
+    }
+  },
+  "repo_scan_pts": 15.0,
+  "brief_pts": 15.0,
+  "total_score": 0.0
+}

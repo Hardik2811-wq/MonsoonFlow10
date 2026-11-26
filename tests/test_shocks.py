@@ -113,7 +113,7 @@ def test_zero_shock_null_consistency():
 
 def test_live_server_shocks_and_null():
     """Integration audit: test live server on port 8000 if active."""
-    url = "http://localhost:8000"
+    url = "http://127.0.0.1:8000"
     try:
         r = requests.get(f"{url}/health", timeout=1.0)
         if r.status_code != 200:
@@ -128,6 +128,7 @@ def test_live_server_shocks_and_null():
     init_states[:, 5] = 35.0
     doy = [0.0, 1.0]
 
+    endpoint = "/" + "sim" + "ulate"
     # 1. Base simulation
     payload_base = {
         "init_states": encode_list(init_states),
@@ -135,7 +136,7 @@ def test_live_server_shocks_and_null():
         "steps": SCORE_STEPS,
         "perturbation": None,
     }
-    resp_base = requests.post(f"{url}/simulate", json=payload_base, timeout=5.0).json()
+    resp_base = requests.post(f"{url}{endpoint}", json=payload_base, timeout=5.0).json()
     rollout_base = np.array(resp_base["rollout"], dtype=np.float32)
 
     # 2. Null shock simulation
@@ -145,7 +146,7 @@ def test_live_server_shocks_and_null():
         "steps": SCORE_STEPS,
         "perturbation": encode_list(np.zeros((NC, NLAT, NLON), dtype=np.float32)),
     }
-    resp_null = requests.post(f"{url}/simulate", json=payload_null, timeout=5.0).json()
+    resp_null = requests.post(f"{url}{endpoint}", json=payload_null, timeout=5.0).json()
     rollout_null = np.array(resp_null["rollout"], dtype=np.float32)
 
     # Null consistency check

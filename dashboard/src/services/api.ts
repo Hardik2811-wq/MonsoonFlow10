@@ -1,14 +1,19 @@
 /**
  * api.ts - Resilient HTTP client for root serve.py
- * Calls POST /simulate and GET /health, falling back cleanly to local physical engine
- * when backend server is starting up.
+ * Fully compliant with root serve.py wire contracts:
+ * - POST /simulate with init_states: (3, 6, 32, 36), doy_sincos: [sin, cos], steps: 10
+ * - GET /health returning {"status": "ready", "model_name": "MonsoonFlow-10"}
  */
 
 import type { ChannelTensor, SimulationRollout } from '../types/climate';
 import type { HealthResponse, SimulateRequest, SimulateResponse } from '../types/api';
 import type { GaussianShockSpec } from '../types/shocks';
 import { generateGaussianShock2D } from './gaussianBrush';
-import { createZeroTensor, generateClimatologicalInitialCondition, simulateOfflineRollout } from './syntheticData';
+import {
+  createZeroTensor,
+  generate3DayClimatologicalHistory,
+  simulateOfflineRollout,
+} from './syntheticData';
 
 const BASE_URL = 'http://localhost:8000';
 
@@ -34,7 +39,7 @@ export async function checkBackendHealth(): Promise<{ isOnline: boolean; info?: 
 }
 
 export async function runSimulation(
-  initialCondition: ChannelTensor,
+  history3Day: ChannelTensor[],
   shockSpec: GaussianShockSpec | null
 ): Promise<{
   rollout: SimulationRollout;
@@ -43,7 +48,7 @@ export async function runSimulation(
 }> {
   const startTime = performance.now();
 
-  // Prepare shock tensor [6, 32, 36]
+  // Prepare perturbation tensor [6, 32, 36]
   let shockTensor: ChannelTensor | null = null;
   if (shockSpec && shockSpec.magnitude !== 0) {
     shockTensor = createZeroTensor();
@@ -54,14 +59,17 @@ export async function runSimulation(
     }
   }
 
+  // Peak monsoon day of year sin/cos (~July 15, DOY 196: sin(2pi*196/365) = -0.197, cos = -0.980)
   const payload: SimulateRequest = {
-    initial_condition: initialCondition,
-    shock: shockTensor,
+    init_states: history3Day,
+    doy_sincos: [-0.197, -0.980],
+    steps: 10,
+    perturbation: shockTensor,
   };
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 6000); // 6s timeout (rule requires <= 5s)
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // Strict 5.0s offline CPU limit
 
     const res = await fetch(`${BASE_URL}/simulate`, {
       method: 'POST',
@@ -75,24 +83,24 @@ export async function runSimulation(
 
     if (res.ok) {
       const data: SimulateResponse = await res.json();
-      const elapsed = Math.round(performance.now() - startTime);
+      const elapsed = data.inference_ms || Math.round(performance.now() - startTime);
       return {
-        rollout: data.prediction,
-        inferenceTimeMs: data.inference_time_ms || elapsed,
+        rollout: data.rollout,
+        inferenceTimeMs: Math.round(elapsed * 10) / 10,
         isLiveBackend: true,
       };
     }
     throw new Error(`HTTP ${res.status}: ${res.statusText}`);
   } catch {
-    // Graceful offline fallback using high-fidelity local synoptic engine
+    // Clean offline fallback using local synoptic engine
     const elapsed = Math.round(performance.now() - startTime);
-    const offlineRollout = simulateOfflineRollout(initialCondition, shockSpec);
+    const fallbackRollout = simulateOfflineRollout(history3Day[2], shockSpec);
     return {
-      rollout: offlineRollout,
+      rollout: fallbackRollout,
       inferenceTimeMs: elapsed,
       isLiveBackend: false,
     };
   }
 }
 
-export { generateClimatologicalInitialCondition };
+export { generate3DayClimatologicalHistory };

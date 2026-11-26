@@ -1,5 +1,6 @@
 /**
  * TimelineScrubber.tsx - Forecast Timeline Scrubber from Day 0 to Day 10
+ * Interactive temporal playback over live POST /simulate rollouts
  */
 
 import React from 'react';
@@ -43,7 +44,7 @@ export const TimelineScrubber: React.FC = () => {
 
         <button
           onClick={togglePlay}
-          className="px-3 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium flex items-center gap-1.5 transition-colors"
+          className="px-3.5 py-1.5 rounded bg-sky-600 hover:bg-sky-500 text-white font-medium flex items-center gap-1.5 transition-colors shadow-sm"
           title={isPlaying ? 'Pause Rollout' : 'Play Rollout (Day 0-10)'}
         >
           {isPlaying ? (
@@ -73,9 +74,9 @@ export const TimelineScrubber: React.FC = () => {
             <button
               key={s}
               onClick={() => setPlaybackSpeed(s)}
-              className={`px-2 py-0.5 rounded text-[11px] ${
+              className={`px-2 py-0.5 rounded text-[11px] transition-colors ${
                 playbackSpeed === s
-                  ? 'bg-[#1E293B] text-sky-400 font-semibold'
+                  ? 'bg-[#1E293B] text-sky-400 font-semibold border border-slate-700'
                   : 'text-slate-500 hover:text-slate-300'
               }`}
             >
@@ -85,7 +86,7 @@ export const TimelineScrubber: React.FC = () => {
         </div>
       </div>
 
-      {/* Interactive Range Scrubber with Discrete Day Nodes */}
+      {/* Interactive Range Scrubber with Keyframe Nodes */}
       <div className="flex-1 flex flex-col justify-center px-4">
         <div className="flex justify-between text-[11px] text-slate-400 mb-1 tabular-nums">
           <span>DAY 00 (Initial Condition)</span>
@@ -95,25 +96,28 @@ export const TimelineScrubber: React.FC = () => {
           <span>DAY 10 (+240h Rollout)</span>
         </div>
 
-        <input
-          type="range"
-          min={0}
-          max={10}
-          step={1}
-          value={currentDay}
-          onChange={(e) => setCurrentDay(parseInt(e.target.value, 10))}
-          className="w-full h-1.5 bg-[#1E293B] rounded-lg appearance-none cursor-pointer"
-        />
+        {/* Track with active fill */}
+        <div className="relative w-full flex items-center">
+          <input
+            type="range"
+            min={0}
+            max={10}
+            step={1}
+            value={currentDay}
+            onChange={(e) => setCurrentDay(parseInt(e.target.value, 10))}
+            className="w-full h-2 bg-[#1E293B] rounded-lg appearance-none cursor-pointer z-10 accent-sky-500"
+          />
+        </div>
 
-        {/* Discrete Keyframe Ticks */}
+        {/* Discrete Keyframe Ticks with Interactive Clicking */}
         <div className="flex justify-between mt-1 px-1">
           {days.map((d) => (
             <button
               key={d}
               onClick={() => setCurrentDay(d)}
-              className={`text-[10px] tabular-nums transition-colors ${
+              className={`text-[10px] tabular-nums transition-colors px-1 py-0.5 rounded ${
                 currentDay === d
-                  ? 'text-sky-400 font-bold'
+                  ? 'text-sky-400 font-bold bg-sky-950/50 border border-sky-800/60'
                   : 'text-slate-600 hover:text-slate-400'
               }`}
             >
@@ -124,7 +128,7 @@ export const TimelineScrubber: React.FC = () => {
       </div>
 
       {/* Lead Time Display Pill */}
-      <div className="px-3 py-1.5 rounded bg-[#0B0F17] border border-[#1E293B] text-slate-300 text-center min-w-[120px]">
+      <div className="px-3 py-1.5 rounded bg-[#0B0F17] border border-[#1E293B] text-slate-300 text-center min-w-[125px]">
         <div className="text-[10px] text-slate-500">LEAD HORIZON</div>
         <div className="font-semibold text-sky-400 tabular-nums">
           +{currentDay * 24}h FORECAST

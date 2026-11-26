@@ -1,25 +1,26 @@
 /**
  * api.ts - Wire interface schemas for root serve.py backend
+ * Exactly matches root serve.py (FastAPI) and inference/schemas.py
  */
 
 export interface HealthResponse {
   status: string;
-  uptime_seconds?: number;
+  model_name?: string;
   device?: string;
   threads?: number;
-  model_loaded?: boolean;
+  uptime_seconds?: number;
 }
 
 export interface SimulateRequest {
-  initial_condition: number[][][]; // [6, 32, 36] physical units
-  shock?: number[][][] | null;     // [6, 32, 36] physical delta perturbations
+  init_states: number[][][][];      // (3, 6, 32, 36) in physical units
+  doy_sincos: [number, number];      // [sin, cos] cyclic day-of-year representation
+  steps: number;                    // 10
+  perturbation?: number[][][] | null; // (6, 32, 36) physical perturbation delta
 }
 
 export interface SimulateResponse {
-  prediction: number[][][][];      // [10, 6, 32, 36] physical units
-  inference_time_ms: number;
-  offline_cpu?: boolean;
-  status?: string;
+  rollout: number[][][][];          // (steps, 6, 32, 36) in physical units
+  inference_ms: number;             // Execution latency in milliseconds
 }
 
 export interface ApiStatus {
@@ -27,6 +28,7 @@ export interface ApiStatus {
   isSimulating: boolean;
   latencyMs: number;
   endpoint: string;
+  modelName: string;
   lastSimulatedAt: Date | null;
   errorMessage: string | null;
 }

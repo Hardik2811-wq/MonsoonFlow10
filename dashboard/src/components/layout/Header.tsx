@@ -1,11 +1,11 @@
 /**
- * Header.tsx - Dark slate instrument console topbar
+ * Header.tsx - Dark slate instrument console topbar with live telemetry
  */
 
 import React from 'react';
 import { useClimateData, type ViewMode } from '../../context/ClimateDataContext';
 import { useTimeline } from '../../context/TimelineContext';
-import { Activity, Server, Zap } from 'lucide-react';
+import { Activity, Cpu, Server, Zap } from 'lucide-react';
 
 export const Header: React.FC = () => {
   const { apiStatus, viewMode, setViewMode } = useClimateData();
@@ -28,7 +28,7 @@ export const Header: React.FC = () => {
             MONSOONFLOW-10
           </span>
           <span className="text-xs text-slate-400 border border-slate-700 rounded px-1.5 py-0.5 font-mono">
-            MF10 DIGITAL TWIN
+            DIGITAL TWIN
           </span>
         </div>
       </div>
@@ -41,7 +41,7 @@ export const Header: React.FC = () => {
             onClick={() => setViewMode(m.id)}
             className={`px-3 py-1 text-xs font-mono transition-colors rounded ${
               viewMode === m.id
-                ? 'bg-[#1E293B] text-sky-400 font-medium border border-slate-700'
+                ? 'bg-[#1E293B] text-sky-400 font-medium border border-slate-700 shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -51,7 +51,7 @@ export const Header: React.FC = () => {
       </div>
 
       {/* Telemetry Status Strip */}
-      <div className="flex items-center gap-4 text-xs font-mono tabular-nums">
+      <div className="flex items-center gap-3 text-xs font-mono tabular-nums">
         {/* Forecast Lead Time */}
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#111827] border border-[#1E293B] text-slate-300">
           <Activity className="w-3.5 h-3.5 text-sky-400" />
@@ -60,15 +60,21 @@ export const Header: React.FC = () => {
           </span>
         </div>
 
-        {/* Inference Latency */}
+        {/* Offline CPU Specification Badge */}
+        <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#111827] border border-[#1E293B] text-slate-400">
+          <Cpu className="w-3.5 h-3.5 text-slate-400" />
+          <span>4-CORE OFFLINE CPU (≤5.0s)</span>
+        </div>
+
+        {/* Inference Latency (ms) */}
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-[#111827] border border-[#1E293B] text-slate-300">
           <Zap className="w-3.5 h-3.5 text-amber-400" />
           <span>
-            CPU: <strong className="text-slate-100">{apiStatus.latencyMs} ms</strong>
+            LATENCY: <strong className="text-slate-100">{apiStatus.latencyMs} ms</strong>
           </span>
         </div>
 
-        {/* Backend Heartbeat */}
+        {/* Backend Heartbeat & Model Name */}
         <div
           className={`flex items-center gap-1.5 px-2.5 py-1 rounded border ${
             apiStatus.isLive
@@ -77,7 +83,11 @@ export const Header: React.FC = () => {
           }`}
         >
           <Server className="w-3.5 h-3.5" />
-          <span>{apiStatus.isLive ? 'SERVE:8000 LIVE' : 'STANDALONE CPU'}</span>
+          <span className="font-semibold">
+            {apiStatus.isLive
+              ? `LIVE :8000 [${apiStatus.modelName}]`
+              : 'STANDALONE CPU'}
+          </span>
         </div>
       </div>
     </header>

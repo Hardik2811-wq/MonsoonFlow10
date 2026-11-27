@@ -1,9 +1,12 @@
 """Model, statistics, and static terrain preloading registry for offline serving."""
 from __future__ import annotations
 import json
+import logging
 from pathlib import Path
 from typing import Optional
 import numpy as np
+
+logger = logging.getLogger("inference.loader")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 CHECKPOINTS_DIR = BASE_DIR / "checkpoints"
@@ -71,7 +74,7 @@ class ArtifactRegistry:
                     self.model = model
                     self.model_name = "MonsoonFlow-10"
                 except RuntimeError as e:
-                    print(f"[loader] Warning: checkpoint mismatch ({type(e).__name__}); awaiting retrained weights.")
+                    logger.warning("Checkpoint mismatch (%s); awaiting retrained weights.", type(e).__name__)
                     self.model = None
                     self.model_name = "MonsoonFlow-10-PendingWeights"
             elif hasattr(loaded, "eval"):

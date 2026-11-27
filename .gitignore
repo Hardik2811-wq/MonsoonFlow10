@@ -73,3 +73,12 @@ Thumbs.db
 *.swp
 *.swo
 *~
+
+# --- Internal Reference, Planning, Agent Config & Backup Files (Local Only) ---
+Source/
+plan/
+modelScore/
+AGENTS.md
+CLAUDE.md
+GEMINI.md
+checkpoints/model_phase4_backup.pt

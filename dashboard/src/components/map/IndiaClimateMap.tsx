@@ -758,6 +758,8 @@ export const IndiaClimateMap: React.FC = () => {
         <Terrain3DView
           active={tilt}
           staticFields={staticFields}
+          reliefImage={reliefImage}
+          showRelief={showRelief}
           fieldImages={fieldImages}
           smooth={smooth}
           contourLayers={contourLayers}

@@ -35,6 +35,8 @@ export type TerrainWindMode = 'FLOW' | 'ARROWS' | 'OFF';
 interface Terrain3DViewProps {
   active: boolean;
   staticFields: StaticFields;
+  reliefImage: HTMLCanvasElement | null;
+  showRelief: boolean;
   fieldImages: {
     left: HTMLCanvasElement;
     right: HTMLCanvasElement | null;
@@ -67,15 +69,15 @@ const LON_MAX = GRID_CONFIG.lonMax + HALF; // 101.0
 const LAT_MIN = GRID_CONFIG.latMin - HALF; // 6.0
 const LAT_MAX = GRID_CONFIG.latMax + HALF; // 38.0
 
-/** 3x bilinear upsampling -> 96x108 terrain mesh */
-const SEG_X = 108;
-const SEG_Z = 96;
+/** 5x bicubic upsampling -> 160x180 sculptural terrain mesh */
+const SEG_X = 180;
+const SEG_Z = 160;
 
 /** World dimensions preserving cos(22°) aspect ratio of the 32°x36° India domain */
 const WORLD_W = NLON * Math.cos((22 * Math.PI) / 180); // ~33.38
 const WORLD_D = NLAT; // 32
 const MAX_OROGRAPHY_M = 5284;
-const MAX_HEIGHT = 6.0;
+const MAX_HEIGHT = 6.2;
 
 /** Draped texture resolution (24 px per 1° cell = 864x768 for crisp labels, coastlines & wind) */
 const TEX_S = 24;
@@ -100,6 +102,38 @@ const toTexProjector: Projector = (lat, lon) => [
   (lon - LON_MIN) * TEX_S,
   (LAT_MAX - lat) * TEX_S,
 ];
+
+function cubic1D(p0: number, p1: number, p2: number, p3: number, t: number): number {
+  const a0 = -0.5 * p0 + 1.5 * p1 - 1.5 * p2 + 0.5 * p3;
+  const a1 = p0 - 2.5 * p1 + 2 * p2 - 0.5 * p3;
+  const a2 = -0.5 * p0 + 0.5 * p2;
+  const a3 = p1;
+  return ((a0 * t + a1) * t + a2) * t + a3;
+}
+
+/** Smooth bicubic Catmull-Rom sample for sculptural ridge geometry on 160x180 mesh. */
+function sampleBicubic(grid: number[][], fi: number, fj: number): number {
+  const i = Math.max(0, Math.min(NLAT - 1, fi));
+  const j = Math.max(0, Math.min(NLON - 1, fj));
+  const i1 = Math.floor(i);
+  const j1 = Math.floor(j);
+  const ti = i - i1;
+  const tj = j - j1;
+  const clampI = (k: number) => Math.max(0, Math.min(NLAT - 1, k));
+  const clampJ = (k: number) => Math.max(0, Math.min(NLON - 1, k));
+  const rowVals = [0, 0, 0, 0];
+  for (let m = -1; m <= 2; m++) {
+    const r = grid[clampI(i1 + m)];
+    rowVals[m + 1] = cubic1D(
+      r[clampJ(j1 - 1)],
+      r[clampJ(j1)],
+      r[clampJ(j1 + 1)],
+      r[clampJ(j1 + 2)],
+      tj
+    );
+  }
+  return Math.max(0, cubic1D(rowVals[0], rowVals[1], rowVals[2], rowVals[3], ti));
+}
 
 function worldToLatLon(x: number, z: number): { lat: number; lon: number } {
   const u = x / WORLD_W + 0.5;
@@ -178,6 +212,8 @@ async function loadEsriDomainBasemap(): Promise<HTMLCanvasElement | null> {
 function drawStaticDrapedCanvas(
   canvas: HTMLCanvasElement,
   baseCanvas: HTMLCanvasElement,
+  reliefImage: HTMLCanvasElement | null,
+  showRelief: boolean,
   fieldImages: Terrain3DViewProps['fieldImages'],
   smooth: boolean,
   contourLayers: TerrainContourLayer[],
@@ -193,6 +229,14 @@ function drawStaticDrapedCanvas(
   ctx.clearRect(0, 0, TEX_W, TEX_H);
   // 1. Esri basemap + land/ocean contrast + crisp coastline contour
   ctx.drawImage(baseCanvas, 0, 0);
+
+  // 1b. Orographic hillshade relief (matching 2D RELIEF toggle)
+  if (showRelief && reliefImage) {
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(reliefImage, 0, 0, TEX_W, TEX_H);
+    ctx.restore();
+  }
 
   // 2. Draped weather field (cropped to inner 32x36 domain)
   const margin = fieldImages.margin;
@@ -353,6 +397,8 @@ function drawStaticDrapedCanvas(
 export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
   active,
   staticFields,
+  reliefImage,
+  showRelief,
   fieldImages,
   smooth,
   contourLayers,
@@ -376,6 +422,7 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
   const terrainMeshRef = useRef<THREE.Mesh | null>(null);
   const startRafRef = useRef<(() => void) | null>(null);
   const enter3DRef = useRef<(() => void) | null>(null);
+  const exit3DRef = useRef<(() => void) | null>(null);
   const activeRef = useRef(active);
   const [esriBasemap, setEsriBasemap] = useState<HTMLCanvasElement | null>(null);
 
@@ -514,18 +561,18 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
     container.appendChild(renderer.domElement);
 
     // Ridge-enhancing directional lighting + clean ambient fill
-    const ambient = new THREE.AmbientLight(0xffffff, 0.72);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.64);
     scene.add(ambient);
 
-    const sunNW = new THREE.DirectionalLight(0xf8fafc, 1.55);
-    sunNW.position.set(-20, 26, -15);
+    const sunNW = new THREE.DirectionalLight(0xf8fafc, 1.75);
+    sunNW.position.set(-22, 26, -16);
     scene.add(sunNW);
 
-    const rimSE = new THREE.DirectionalLight(0x94a3b8, 0.42);
-    rimSE.position.set(15, 10, 18);
+    const rimSE = new THREE.DirectionalLight(0x94a3b8, 0.48);
+    rimSE.position.set(16, 9, 20);
     scene.add(rimSE);
 
-    // Bilinearly upsampled 96x108 heightfield mesh
+    // Bicubic 160x180 sculptural heightfield mesh (flat ocean at z=0)
     const geometry = new THREE.PlaneGeometry(WORLD_W, WORLD_D, SEG_X, SEG_Z);
     geometry.rotateX(-Math.PI / 2);
 
@@ -535,7 +582,7 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
       for (let ix = 0; ix <= SEG_X; ix++) {
         const fj = (ix / SEG_X) * NLON - 0.5;
         const idx = iz * (SEG_X + 1) + ix;
-        const elev = Math.max(0, sampleBilinear(staticFields.orography, fi, fj));
+        const elev = sampleBicubic(staticFields.orography, fi, fj);
         const lsm = sampleBilinear(staticFields.landSea, fi, fj);
         const y = lsm < 0.15 && elev < 20 ? 0 : (elev / MAX_OROGRAPHY_M) * MAX_HEIGHT;
         pos.setY(idx, y);
@@ -597,10 +644,16 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
     let targetPhi = 0.88;
     let targetRadius = 47;
     let enterStartMs = 0;
-    const ENTER_DURATION_MS = 380;
+    let exitStartMs = 0;
+    let exitFromTheta = 0.07;
+    let exitFromPhi = 0.88;
+    let exitFromRadius = 47;
+    let exitFromScaleY = 1.0;
+    const TRANSITION_DURATION_MS = 360;
 
     enter3DRef.current = () => {
       // Reset to near-top-down flat plane, then ease smoothly into 3D orbit + extruded relief
+      exitStartMs = 0;
       theta = 0.0;
       phi = 0.08;
       radius = 44;
@@ -609,6 +662,16 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
       targetRadius = 47;
       terrainMesh.scale.y = 0.001;
       enterStartMs = performance.now();
+    };
+
+    exit3DRef.current = () => {
+      // Capture current 3D pose & ease smoothly back to flat top-down while crossfading to 2D
+      enterStartMs = 0;
+      exitFromTheta = theta;
+      exitFromPhi = phi;
+      exitFromRadius = radius;
+      exitFromScaleY = terrainMesh.scale.y;
+      exitStartMs = performance.now();
     };
 
     let isDragging = false;
@@ -736,15 +799,23 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
         }
       }
 
-      // Smooth pitch & elevation ease-in on 2D -> 3D entry (~380ms)
+      // Symmetric smooth pitch & elevation ease-in (2D->3D) and ease-out (3D->2D) (~360ms)
       if (enterStartMs > 0) {
-        const t = Math.min(1, (performance.now() - enterStartMs) / ENTER_DURATION_MS);
+        const t = Math.min(1, (performance.now() - enterStartMs) / TRANSITION_DURATION_MS);
         const ease = 1 - Math.pow(1 - t, 3); // easeOutCubic
         terrainMesh.scale.y = Math.max(0.001, ease);
         theta = 0.0 + (targetTheta - 0.0) * ease;
         phi = 0.08 + (targetPhi - 0.08) * ease;
         radius = 44 + (targetRadius - 44) * ease;
         if (t >= 1) enterStartMs = 0;
+      } else if (exitStartMs > 0) {
+        const t = Math.min(1, (performance.now() - exitStartMs) / TRANSITION_DURATION_MS);
+        const ease = 1 - Math.pow(1 - t, 3); // easeOutCubic
+        terrainMesh.scale.y = Math.max(0.001, exitFromScaleY + (0.001 - exitFromScaleY) * ease);
+        theta = exitFromTheta + (0.0 - exitFromTheta) * ease;
+        phi = exitFromPhi + (0.08 - exitFromPhi) * ease;
+        radius = exitFromRadius + (44 - exitFromRadius) * ease;
+        if (t >= 1) exitStartMs = 0;
       } else {
         theta += (targetTheta - theta) * 0.14;
         phi += (targetPhi - phi) * 0.14;
@@ -763,7 +834,7 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
 
     startRafRef.current = () => {
       if (!activeRef.current) {
-        fadeOutUntilMs = performance.now() + 340;
+        fadeOutUntilMs = performance.now() + TRANSITION_DURATION_MS + 20;
       }
       if (!raf) {
         raf = requestAnimationFrame(animate);
@@ -779,6 +850,7 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
       if (raf) cancelAnimationFrame(raf);
       startRafRef.current = null;
       enter3DRef.current = null;
+      exit3DRef.current = null;
       terrainMeshRef.current = null;
       resizeObserver.disconnect();
       el.removeEventListener('pointerdown', onPointerDown);
@@ -797,14 +869,17 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
     };
   }, [staticFields]);
 
-  // Start/resume RAF and ease-in pitch + elevation when active toggles
+  // Start/resume RAF and ease-in/ease-out pitch + elevation when active toggles
+  const wasActiveRef = useRef(active);
   useEffect(() => {
     if (active) {
       enter3DRef.current?.();
       startRafRef.current?.();
-    } else {
-      startRafRef.current?.(); // runs for 340ms fade-out then pauses
+    } else if (wasActiveRef.current) {
+      exit3DRef.current?.();
+      startRafRef.current?.(); // runs for 360ms exit ease-out + fade-out then pauses
     }
+    wasActiveRef.current = active;
   }, [active]);
 
   // Clear stale wind trails immediately when switching viewMode (e.g. BASELINE <-> SHOCK <-> SPLIT)
@@ -815,7 +890,7 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
     wctx?.clearRect(0, 0, TEX_W, TEX_H);
   }, [viewMode]);
 
-  // Redraw static draped layer (basemap + field + contours + shock) and static wind arrows if active
+  // Redraw static draped layer (basemap + relief + field + contours + shock) and static wind arrows if active
   useEffect(() => {
     if (!active) return;
     const sc = staticDrapedCanvasRef.current;
@@ -827,6 +902,8 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
     drawStaticDrapedCanvas(
       sc,
       baseTerrainCanvas,
+      reliefImage,
+      showRelief,
       fieldImages,
       smooth,
       contourLayers,
@@ -865,6 +942,8 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
   }, [
     active,
     baseTerrainCanvas,
+    reliefImage,
+    showRelief,
     fieldImages,
     smooth,
     contourLayers,
@@ -881,7 +960,7 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`absolute inset-0 z-[14] bg-[#050505] transition-opacity duration-300 ease-out ${
+      className={`absolute inset-0 z-[14] bg-[#050505] transition-opacity duration-[360ms] ease-out ${
         active ? 'opacity-100' : 'opacity-0 pointer-events-none'
       } ${isBrushMode ? 'cursor-crosshair' : 'cursor-grab active:cursor-grabbing'}`}
     />

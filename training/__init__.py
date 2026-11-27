@@ -1,1 +1,1 @@
-"""MonsoonFlow-10 (MF10) Training Package."""
+"""MonsoonFlow-10 training, baseline, and scientific validation modules."""

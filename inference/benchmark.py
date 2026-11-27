@@ -12,7 +12,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from inference.loader import registry
-from inference.predictor import simulate, rotate_doy_sincos
+from inference.predictor import simulate
 from inference.schemas import NUM_CHANNELS, NUM_LATS, NUM_LONS, INPUT_DAYS, DEFAULT_STEPS
 
 

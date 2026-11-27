@@ -1,98 +1,114 @@
-"""Model, statistics, and static terrain preloading registry for offline serving."""
+"""Model artifact loader for offline CPU serving."""
 from __future__ import annotations
-import json
-import logging
-from pathlib import Path
-from typing import Optional
-import numpy as np
 
-logger = logging.getLogger("inference.loader")
+import json
+import time
+from pathlib import Path
+from typing import Any, Optional
+
+import torch
+
+from models.backbones import BaseMonsoonForecaster, load_model_from_checkpoint
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 CHECKPOINTS_DIR = BASE_DIR / "checkpoints"
+DEFAULT_MODEL_PATH = CHECKPOINTS_DIR / "model.pt"
+CPU_THREADS = 4
+
+
+def configure_cpu_threads(num_threads: int = CPU_THREADS) -> int:
+    """Configure deterministic, resource-bounded CPU thread pools."""
+    torch.set_num_threads(num_threads)
+    try:
+        torch.set_num_interop_threads(1)
+    except RuntimeError:
+        # PyTorch raises RuntimeError if interop threads are already initialized
+        pass
+    return int(torch.get_num_threads())
 
 
 class ArtifactRegistry:
-    """Singleton registry preloading weights, normalization stats, and terrain."""
+    """Singleton container preloading trained model weights on CPU at boot."""
 
-    def __init__(self):
+    def __init__(self) -> None:
+        self.model: Optional[BaseMonsoonForecaster] = None
+        self.checkpoint_meta: dict[str, Any] = {}
+        self.stats: Optional[dict[str, Any]] = None
+        self.model_name: str = "MonsoonFlow-10"
+        self.num_threads: int = CPU_THREADS
+        self.load_error: Optional[str] = "Model not loaded yet"
+        self.start_time: float = time.monotonic()
+        self._is_ready: bool = False
+
+    def reset(self) -> None:
         self.model = None
+        self.checkpoint_meta = {}
         self.stats = None
-        self.mean_np: Optional[np.ndarray] = None
-        self.std_np: Optional[np.ndarray] = None
-        self.mean_th = None
-        self.std_th = None
-        self.static_terrain_np: Optional[np.ndarray] = None
-        self.static_terrain_th = None
         self.model_name = "MonsoonFlow-10"
+        self.load_error = "Model not loaded yet"
         self._is_ready = False
 
-    def load_artifacts(self) -> None:
-        """Executed during server startup lifespan."""
-        # 1. Load Normalization Statistics
+    def load_artifacts(self, checkpoint_path: Optional[Path] = None) -> bool:
+        """Load trained checkpoint safely on CPU during server lifespan startup."""
+        self.reset()
+        self.start_time = time.monotonic()
+        self.num_threads = configure_cpu_threads(CPU_THREADS)
+
+        model_path = Path(checkpoint_path) if checkpoint_path is not None else DEFAULT_MODEL_PATH
+        if not model_path.is_file():
+            self.load_error = f"Checkpoint file not found: {model_path.name}"
+            return False
+
         stats_path = CHECKPOINTS_DIR / "stats.json"
         if stats_path.is_file():
-            with open(stats_path, "r", encoding="utf-8") as f:
-                self.stats = json.load(f)
-            self.mean_np = np.array(self.stats["mean"], dtype=np.float32).reshape(1, 6, 1, 1)
-            self.std_np = np.array(self.stats["std"], dtype=np.float32).reshape(1, 6, 1, 1)
-            import torch
-            self.mean_th = torch.from_numpy(self.mean_np)
-            self.std_th = torch.from_numpy(self.std_np)
+            try:
+                with open(stats_path, "r", encoding="utf-8") as f:
+                    self.stats = json.load(f)
+            except Exception:
+                self.stats = None
 
-        # 2. Load Static Environmental Fields (land_sea_mask, orography)
-        static_path = CHECKPOINTS_DIR / "static.npy"
-        if static_path.is_file():
-            raw_static = np.load(static_path).astype(np.float32)  # (2, 32, 36)
-            lsm = raw_static[0:1]
-            oro_norm = raw_static[1:2] / 8000.0
-            self.static_terrain_np = np.concatenate([lsm, oro_norm], axis=0)  # (2, 32, 36)
-            import torch
-            self.static_terrain_th = torch.from_numpy(self.static_terrain_np).unsqueeze(0)  # (1, 2, 32, 36)
+        try:
+            model, ckpt = load_model_from_checkpoint(model_path, map_location="cpu")
+            model.eval()
+            for param in model.parameters():
+                param.requires_grad_(False)
 
-        # 3. Load Trained MF10 Model Checkpoint
-        model_path = CHECKPOINTS_DIR / "model.pt"
-        if model_path.is_file():
-            import torch
-            from models.mf10 import MonsoonFlow10
+            cfg = ckpt.get("model_config", {})
+            arch = str(ckpt.get("architecture") or cfg.get("arch") or "ms_resunet")
+            use_anchor = bool(cfg.get("use_seasonal_anchor", False))
+            run_name = str(ckpt.get("run_config", {}).get("run_name") or "")
+            epoch = ckpt.get("epoch")
 
-            torch.set_num_threads(4)
-            loaded = torch.load(model_path, map_location="cpu", weights_only=False)
+            # Warm up CPU kernels with a 1-step realistic mean-state pass
+            mean_state = model.stats_mean.detach().reshape(1, 6, 1, 1).expand(3, 6, 32, 36).clone()
+            with torch.inference_mode():
+                _ = model(mean_state, [0.0, 1.0], steps=1, perturbation=None)
 
-            if isinstance(loaded, dict):
-                state_dict = loaded.get("state_dict", loaded)
-                try:
-                    model = MonsoonFlow10(
-                        in_channels=10,
-                        dynamic_channels=6,
-                        hidden_dim=64,
-                        num_lstm_layers=2,
-                        stats=self.stats,
-                    )
-                    model.load_state_dict(state_dict)
-                    model.eval()
-                    self.model = model
-                    self.model_name = "MonsoonFlow-10"
-                except RuntimeError as e:
-                    logger.warning("Checkpoint mismatch (%s); awaiting retrained weights.", type(e).__name__)
-                    self.model = None
-                    self.model_name = "MonsoonFlow-10-PendingWeights"
-            elif hasattr(loaded, "eval"):
-                loaded.eval()
-                self.model = loaded
-                self.model_name = "MonsoonFlow-10"
-
-            # Warmup forward pass to prime CPU caches
-            if self.model is not None:
-                with torch.no_grad():
-                    dummy = torch.zeros(1, 3, 10, 32, 36, dtype=torch.float32)
-                    _ = self.model(dummy, steps=10)
-
-        self._is_ready = True
+            self.model = model
+            self.stats = ckpt.get("stats", self.stats)
+            self.checkpoint_meta = {
+                "checkpoint_file": model_path.name,
+                "architecture": arch,
+                "use_seasonal_anchor": use_anchor,
+                "run_name": run_name,
+                "epoch": int(epoch) if isinstance(epoch, int) else None,
+                "tp_transform": ckpt.get("tp_transform", "linear"),
+            }
+            # Preserve exact dashboard/contract model_name
+            self.model_name = "MonsoonFlow-10"
+            self.load_error = None
+            self._is_ready = True
+            return True
+        except Exception as exc:
+            self.model = None
+            self.model_name = "unavailable"
+            self.load_error = f"Failed to load {model_path.name}: {type(exc).__name__}: {exc}"
+            self._is_ready = False
+            return False
 
     @property
     def is_ready(self) -> bool:
-        return self._is_ready
+        return self._is_ready and self.model is not None
 
 
 registry = ArtifactRegistry()

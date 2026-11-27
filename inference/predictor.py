@@ -1,15 +1,32 @@
-"""Prediction engine with cyclic DOY rotation, MF10 10-step rollout, and zero-shock parity."""
+"""Neural autoregressive prediction engine with physical units and zero-shock parity."""
 from __future__ import annotations
-import math
+
+import threading
 import time
-from typing import Any, List, Optional, Tuple
+from typing import Any, Optional, Sequence
+
 import numpy as np
+import torch
 
 from .loader import registry
-from .schemas import decode_array, NUM_CHANNELS, NUM_LATS, NUM_LONS, INPUT_DAYS
+from .schemas import (
+    DEFAULT_STEPS,
+    INIT_STATE_SHAPE,
+    MAX_STEPS,
+    MIN_STEPS,
+    NUM_CHANNELS,
+    NUM_LATS,
+    NUM_LONS,
+    PERTURBATION_SHAPE,
+    decode_array,
+)
 
-# Constants for cyclic DOY advancement without datetime libraries
-RAD_PER_DAY = 2.0 * math.pi / 365.0
+# Serialize multi-threaded (4-core) CPU forward passes to avoid intra-op thread contention
+_INFER_LOCK = threading.Lock()
+
+
+class ModelNotReadyError(RuntimeError):
+    """Raised when inference is requested while no valid model checkpoint is loaded."""
 
 
 def is_ready() -> bool:
@@ -20,105 +37,64 @@ def get_model_name() -> str:
     return registry.model_name
 
 
-def rotate_doy_sincos(sin_val: float, cos_val: float, days_delta: int = 1) -> Tuple[float, float]:
-    """Rotate [sin, cos] by `days_delta` days using pure trigonometric angle addition.
-    Guarantees zero datetime/date imports or literals in AST.
-    """
-    if days_delta == 0:
-        return sin_val, cos_val
-    angle = days_delta * RAD_PER_DAY
-    sin_a = math.sin(angle)
-    cos_a = math.cos(angle)
-    new_sin = sin_val * cos_a + cos_val * sin_a
-    new_cos = cos_val * cos_a - sin_val * sin_a
-    norm = math.hypot(new_sin, new_cos)
-    if norm > 1e-9:
-        return new_sin / norm, new_cos / norm
-    return new_sin, new_cos
-
-
 def simulate(
     init_states_raw: Any,
-    doy_sincos: List[float],
-    steps: int,
+    doy_sincos: Sequence[float],
+    steps: int = DEFAULT_STEPS,
     perturbation_raw: Optional[Any] = None,
 ) -> tuple[np.ndarray, float]:
-    """Execute 10-step autoregressive rollout in physical units under strict zero-shock contract.
+    """Execute physical-unit autoregressive rollout using the loaded MonsoonFlow-10 model.
 
-    Args:
-        init_states_raw: (3, 6, 32, 36) in physical units (t2m in K, tp in mm/day, etc.)
-        doy_sincos: [sin, cos] of day t_0 (last input slice)
-        steps: Number of forecast steps (default 10)
-        perturbation_raw: Optional (6, 32, 36) physical delta shock or None
-
-    Returns:
-        out: (steps, 6, 32, 36) physical forecast array
-        inference_ms: Execution duration in milliseconds
+    All inputs and outputs remain strictly in physical units:
+      t2m [K], tp [mm/day], u10 [m/s], v10 [m/s], msl [Pa], tcwv [kg/m^2].
+    Normalization, static terrain fusion, DOY rotation, and physical clamping
+    are executed inside ``registry.model.forward(...)``.
     """
+    model = registry.model
+    if not registry.is_ready or model is None:
+        raise ModelNotReadyError(registry.load_error or "Model checkpoint is not loaded")
+
     t0 = time.perf_counter()
 
-    # 1. Decode initial conditions (3, 6, 32, 36) in physical units
-    history = decode_array(init_states_raw, expect_shape=(INPUT_DAYS, NUM_CHANNELS, NUM_LATS, NUM_LONS)).copy()
+    if isinstance(steps, bool) or not isinstance(steps, (int, np.integer)):
+        raise ValueError("steps must be an integer")
+    steps_int = int(steps)
+    if not (MIN_STEPS <= steps_int <= MAX_STEPS):
+        raise ValueError(f"steps must be between {MIN_STEPS} and {MAX_STEPS}, got {steps_int}")
 
-    # 2. Perturbation handling & Zero-shock contract
-    # Add physical delta P directly to init_states[-1] BEFORE normalization.
-    # If perturbation is null or all zeros, bypass addition entirely for bit-level parity.
+    init_states = decode_array(init_states_raw, expect_shape=INIT_STATE_SHAPE, require_finite=True)
+
+    if len(doy_sincos) != 2:
+        raise ValueError(f"doy_sincos must have length 2, got {len(doy_sincos)}")
+    doy_arr = np.asarray([float(doy_sincos[0]), float(doy_sincos[1])], dtype=np.float32)
+    if not bool(np.isfinite(doy_arr).all()):
+        raise ValueError("doy_sincos contains non-finite values")
+
+    pert_tensor: Optional[torch.Tensor] = None
     if perturbation_raw is not None:
-        pert = decode_array(perturbation_raw, expect_shape=(NUM_CHANNELS, NUM_LATS, NUM_LONS))
-        if np.any(np.abs(pert) > 1e-12):
-            history[-1] = history[-1] + pert
-            history[-1, 1] = np.maximum(history[-1, 1], 0.0)
-            history[-1, 0] = np.clip(history[-1, 0], 233.15, 333.15)
-            history[-1, 5] = np.maximum(history[-1, 5], 0.0)
+        pert = decode_array(perturbation_raw, expect_shape=PERTURBATION_SHAPE, require_finite=True)
+        # Preserve exact bit-for-bit equality between None and all-zero perturbation
+        if bool(np.any(pert != 0.0)):
+            pert_tensor = torch.from_numpy(np.ascontiguousarray(pert, dtype=np.float32))
 
-    # 3. Extract preloaded normalization tensors
-    mean = registry.mean_np if registry.mean_np is not None else np.zeros((1, 6, 1, 1), dtype=np.float32)
-    std = registry.std_np if registry.std_np is not None else np.ones((1, 6, 1, 1), dtype=np.float32)
-    static = registry.static_terrain_np  # (2, 32, 36)
+    x_tensor = torch.from_numpy(np.ascontiguousarray(init_states, dtype=np.float32))
+    doy_tensor = torch.from_numpy(doy_arr)
 
-    # 4. Run MonsoonFlow-10 Autoregressive Rollout
-    neural_model = registry.model if (registry.model is not None and callable(registry.model)) else None
+    with _INFER_LOCK:
+        with torch.inference_mode():
+            out_tensor = model(
+                x_tensor,
+                doy_tensor,
+                steps=steps_int,
+                perturbation=pert_tensor,
+            )
 
-    if neural_model is not None:
-        import torch
-
-        # Normalize dynamic channels: (3, 6, 32, 36)
-        norm_history = (history - mean) / np.maximum(std, 1e-6)
-
-        # Build cyclic DOY planes for t_{-2}, t_{-1}, t_0
-        s0, c0 = float(doy_sincos[0]), float(doy_sincos[1])
-        doy_planes = np.zeros((INPUT_DAYS, 2, NUM_LATS, NUM_LONS), dtype=np.float32)
-        for idx, offset in enumerate((-2, -1, 0)):
-            si, ci = rotate_doy_sincos(s0, c0, days_delta=offset)
-            doy_planes[idx, 0] = si
-            doy_planes[idx, 1] = ci
-
-        if static is not None:
-            static_tiled = np.broadcast_to(static[None, ...], (INPUT_DAYS, 2, NUM_LATS, NUM_LONS))
-        else:
-            static_tiled = np.zeros((INPUT_DAYS, 2, NUM_LATS, NUM_LONS), dtype=np.float32)
-
-        # Concatenate into 10-channel input: (1, 3, 10, 32, 36)
-        model_in = np.concatenate([norm_history, static_tiled, doy_planes], axis=1)
-        in_tensor = torch.from_numpy(model_in).unsqueeze(0)
-
-        with torch.no_grad():
-            pred_norm = neural_model(in_tensor, steps=steps, perturbation=None)
-            pred_norm_np = pred_norm.squeeze(0).cpu().numpy()  # (steps, 6, 32, 36)
-
-        # De-normalize back to physical units
-        out = (pred_norm_np * std + mean).astype(np.float32)
-    else:
-        # Fallback persistence if model checkpoint is absent
-        last = history[-1].copy()
-        last[1] = np.maximum(last[1], 0.0)
-        last[0] = np.clip(last[0], 233.15, 333.15)
-        out = np.repeat(last[None, ...], steps, axis=0).astype(np.float32)
-
-    # 5. Enforce final physical boundaries on all rollout steps
-    out[:, 1] = np.maximum(out[:, 1], 0.0)
-    out[:, 0] = np.clip(out[:, 0], 233.15, 333.15)
-    out[:, 5] = np.maximum(out[:, 5], 0.0)
+    out = np.ascontiguousarray(out_tensor.detach().cpu().numpy(), dtype=np.float32)
+    expected_out_shape = (steps_int, NUM_CHANNELS, NUM_LATS, NUM_LONS)
+    if out.shape != expected_out_shape:
+        raise RuntimeError(f"Unexpected rollout shape {out.shape}; expected {expected_out_shape}")
+    if not bool(np.isfinite(out).all()):
+        raise RuntimeError("Model produced non-finite rollout values")
 
     inference_ms = (time.perf_counter() - t0) * 1000.0
     return out, inference_ms

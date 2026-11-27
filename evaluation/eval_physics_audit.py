@@ -26,7 +26,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from data.dataset import MonsoonDataset  # noqa: E402
 from data.preprocessing import chronological_split, load_raw_dataset  # noqa: E402
-from models.mf10 import MonsoonFlow10  # noqa: E402
+from models.backbones import load_model_from_checkpoint  # noqa: E402
 
 
 LATS = np.linspace(6.5, 37.5, 32, dtype=np.float64)
@@ -177,12 +177,13 @@ def compute_moisture_and_nonneg_audit(y_pred: np.ndarray, y_true: np.ndarray) ->
 
 
 def run_split_audit(
-    model: MonsoonFlow10,
+    model: torch.nn.Module,
     splits: dict,
     stats: dict,
     static_fields: np.ndarray,
     split: str,
     num_windows: int = 50,
+    is_backbone_ckpt: bool = True,
 ) -> dict:
     """Run frozen MF10 rollouts on `split` and compute spectral + R_q audits."""
     mean_np = np.array(stats["mean"], dtype=np.float32).reshape(1, 1, 6, 1, 1)
@@ -195,9 +196,15 @@ def run_split_audit(
     pred_list, true_list = [], []
     with torch.no_grad():
         for in_seq, tgt_seq, _ in loader:
-            pred_norm = model(in_seq, steps=10).cpu().numpy()
             tgt_norm = tgt_seq.cpu().numpy()
-            pred_list.append(pred_norm * std_np + mean_np)
+            if is_backbone_ckpt:
+                init_phys = in_seq[:, :, 0:6] * torch.from_numpy(std_np) + torch.from_numpy(mean_np)
+                doy_last = in_seq[:, -1, 8:10, 0, 0]
+                pred_phys = model(init_phys, doy_last, steps=10).cpu().numpy()
+            else:
+                pred_norm = model(in_seq, steps=10).cpu().numpy()
+                pred_phys = pred_norm * std_np + mean_np
+            pred_list.append(pred_phys)
             true_list.append(tgt_norm * std_np + mean_np)
             if len(pred_list) * 16 >= num_windows:
                 break
@@ -223,20 +230,24 @@ def main() -> None:
         stats = json.load(f)
     static_fields = np.load(static_path)
 
-    model = MonsoonFlow10(in_channels=10, dynamic_channels=6, hidden_dim=64, num_lstm_layers=2, stats=stats)
-    state = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    if isinstance(state, dict) and "state_dict" in state:
-        state = state["state_dict"]
-    model.load_state_dict(state)
-    model.eval()
+    raw_ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    is_backbone_ckpt = isinstance(raw_ckpt, dict) and "model_config" in raw_ckpt
+    if is_backbone_ckpt:
+        from models.backbones import load_model_from_checkpoint
+        model, _ = load_model_from_checkpoint(ckpt_path, map_location="cpu")
+    else:
+        model = MonsoonFlow10(in_channels=10, dynamic_channels=6, hidden_dim=64, num_lstm_layers=2, stats=stats)
+        state = raw_ckpt["state_dict"] if isinstance(raw_ckpt, dict) and "state_dict" in raw_ckpt else raw_ckpt
+        model.load_state_dict(state)
+        model.eval()
 
     raw_data, raw_dates = load_raw_dataset(nc_path)
     splits = chronological_split(raw_data, raw_dates)
 
     report = {
         "checkpoint": str(ckpt_path.relative_to(REPO_ROOT)),
-        "pool_a_val": run_split_audit(model, splits, stats, static_fields, split="val", num_windows=50),
-        "holdout_2021_test": run_split_audit(model, splits, stats, static_fields, split="test", num_windows=50),
+        "pool_a_val": run_split_audit(model, splits, stats, static_fields, split="val", num_windows=50, is_backbone_ckpt=is_backbone_ckpt),
+        "holdout_2021_test": run_split_audit(model, splits, stats, static_fields, split="test", num_windows=50, is_backbone_ckpt=is_backbone_ckpt),
     }
 
     out_path = REPO_ROOT / "evaluation" / "physics_audit_report.json"

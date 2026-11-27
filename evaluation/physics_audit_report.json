@@ -5,28 +5,28 @@
     "num_windows": 50,
     "spectral_power_ratio": {
       "day_1": {
-        "ke_total_ratio": 0.8599316917534997,
-        "ke_synoptic_k1_4_ratio": 0.7580221944983423,
-        "ke_mesoscale_k5_16_ratio": 0.705740316212713,
-        "tp_total_ratio": 0.6230052066868796,
-        "tp_synoptic_k1_4_ratio": 0.4982886932066584,
-        "tp_mesoscale_k5_16_ratio": 0.24391656824966554
+        "ke_total_ratio": 0.8792874497581976,
+        "ke_synoptic_k1_4_ratio": 0.8356341793161143,
+        "ke_mesoscale_k5_16_ratio": 0.7919574900097471,
+        "tp_total_ratio": 0.7528845220153529,
+        "tp_synoptic_k1_4_ratio": 0.6853292690814818,
+        "tp_mesoscale_k5_16_ratio": 0.369876208254783
       },
       "day_4": {
-        "ke_total_ratio": 0.7742183763837056,
-        "ke_synoptic_k1_4_ratio": 0.6720763924184636,
-        "ke_mesoscale_k5_16_ratio": 0.6829753874948321,
-        "tp_total_ratio": 0.4676025122241493,
-        "tp_synoptic_k1_4_ratio": 0.33595194197360667,
-        "tp_mesoscale_k5_16_ratio": 0.24876829916018336
+        "ke_total_ratio": 0.7982637083574358,
+        "ke_synoptic_k1_4_ratio": 0.7085774144420718,
+        "ke_mesoscale_k5_16_ratio": 0.6852442512958964,
+        "tp_total_ratio": 0.4549810640728066,
+        "tp_synoptic_k1_4_ratio": 0.3636995739582825,
+        "tp_mesoscale_k5_16_ratio": 0.26529850787717024
       },
       "day_8": {
-        "ke_total_ratio": 0.7746573609629657,
-        "ke_synoptic_k1_4_ratio": 0.6785766275896568,
-        "ke_mesoscale_k5_16_ratio": 0.6917520748516041,
-        "tp_total_ratio": 0.4171954082046917,
-        "tp_synoptic_k1_4_ratio": 0.3038409633473402,
-        "tp_mesoscale_k5_16_ratio": 0.23156285126281975
+        "ke_total_ratio": 0.8039321033753853,
+        "ke_synoptic_k1_4_ratio": 0.7106036403975367,
+        "ke_mesoscale_k5_16_ratio": 0.6846121272399168,
+        "tp_total_ratio": 0.4363844660704929,
+        "tp_synoptic_k1_4_ratio": 0.35117870428869113,
+        "tp_mesoscale_k5_16_ratio": 0.2638770272941327
       }
     },
     "moisture_and_nonneg": {
@@ -34,22 +34,22 @@
         "total_cells": 576000,
         "tp_lt_0_count": 0,
         "tp_lt_0_pct": 0.0,
-        "tcwv_le_0_count": 364,
-        "tcwv_le_0_pct": 0.06319444444444444,
+        "tcwv_le_0_count": 2272,
+        "tcwv_le_0_pct": 0.39444444444444443,
         "tp_min_mm_day": 0.0,
         "tcwv_min_kg_m2": 0.0,
         "all_finite": true
       },
       "open_boundary_rq_kg_m2_day": {
-        "mf10_mean_abs_rq": 8.455017657959388,
+        "mf10_mean_abs_rq": 8.855388800782661,
         "era5_mean_abs_rq": 11.11742474972347,
-        "mean_abs_ratio_mf10_to_era5": 0.7605194411745124,
-        "mf10_rms_rq": 12.395173831003111,
+        "mean_abs_ratio_mf10_to_era5": 0.7965323804870301,
+        "mf10_rms_rq": 13.356041118688486,
         "era5_rms_rq": 17.028637784727124,
-        "rms_ratio_mf10_to_era5": 0.7279016670446924,
-        "mf10_p95_abs_rq": 24.429239290334003,
+        "rms_ratio_mf10_to_era5": 0.7843282174142804,
+        "mf10_p95_abs_rq": 27.02980051214441,
         "era5_p95_abs_rq": 33.737643634879525,
-        "mf10_mean_signed_rq": 1.8206285526518693,
+        "mf10_mean_signed_rq": 1.5418045880217344,
         "era5_mean_signed_rq": 1.5216332416898544
       }
     }
@@ -59,28 +59,28 @@
     "num_windows": 50,
     "spectral_power_ratio": {
       "day_1": {
-        "ke_total_ratio": 0.8619323935875961,
-        "ke_synoptic_k1_4_ratio": 0.7650809856991153,
-        "ke_mesoscale_k5_16_ratio": 0.7389967367104564,
-        "tp_total_ratio": 0.6120378180402049,
-        "tp_synoptic_k1_4_ratio": 0.5081297989597369,
-        "tp_mesoscale_k5_16_ratio": 0.29644308117595985
+        "ke_total_ratio": 0.8830390042757095,
+        "ke_synoptic_k1_4_ratio": 0.837737406241301,
+        "ke_mesoscale_k5_16_ratio": 0.8278793319160007,
+        "tp_total_ratio": 0.7525075090711215,
+        "tp_synoptic_k1_4_ratio": 0.6819621471239579,
+        "tp_mesoscale_k5_16_ratio": 0.3823646878329081
       },
       "day_4": {
-        "ke_total_ratio": 0.7645351033750744,
-        "ke_synoptic_k1_4_ratio": 0.682561454201452,
-        "ke_mesoscale_k5_16_ratio": 0.6486993031056502,
-        "tp_total_ratio": 0.4433788746657387,
-        "tp_synoptic_k1_4_ratio": 0.32699965608338905,
-        "tp_mesoscale_k5_16_ratio": 0.26737037310145456
+        "ke_total_ratio": 0.7557541680067035,
+        "ke_synoptic_k1_4_ratio": 0.6858789498727982,
+        "ke_mesoscale_k5_16_ratio": 0.6255259778129615,
+        "tp_total_ratio": 0.44743872437798665,
+        "tp_synoptic_k1_4_ratio": 0.36851263471276813,
+        "tp_mesoscale_k5_16_ratio": 0.2848618775777721
       },
       "day_8": {
-        "ke_total_ratio": 0.7562813161943722,
-        "ke_synoptic_k1_4_ratio": 0.681115169065164,
-        "ke_mesoscale_k5_16_ratio": 0.6477335480624374,
-        "tp_total_ratio": 0.4006022406362283,
-        "tp_synoptic_k1_4_ratio": 0.28878394547374875,
-        "tp_mesoscale_k5_16_ratio": 0.2296324486190411
+        "ke_total_ratio": 0.77635107281419,
+        "ke_synoptic_k1_4_ratio": 0.6952617426379625,
+        "ke_mesoscale_k5_16_ratio": 0.6238714668046438,
+        "tp_total_ratio": 0.48624283181212385,
+        "tp_synoptic_k1_4_ratio": 0.38585898256968465,
+        "tp_mesoscale_k5_16_ratio": 0.26430636800230495
       }
     },
     "moisture_and_nonneg": {
@@ -88,22 +88,22 @@
         "total_cells": 576000,
         "tp_lt_0_count": 0,
         "tp_lt_0_pct": 0.0,
-        "tcwv_le_0_count": 1080,
-        "tcwv_le_0_pct": 0.1875,
+        "tcwv_le_0_count": 1366,
+        "tcwv_le_0_pct": 0.23715277777777777,
         "tp_min_mm_day": 0.0,
         "tcwv_min_kg_m2": 0.0,
         "all_finite": true
       },
       "open_boundary_rq_kg_m2_day": {
-        "mf10_mean_abs_rq": 8.466974574087798,
+        "mf10_mean_abs_rq": 8.62943464482232,
         "era5_mean_abs_rq": 10.379319351660033,
-        "mean_abs_ratio_mf10_to_era5": 0.815754317525033,
-        "mf10_rms_rq": 12.46914745912703,
+        "mean_abs_ratio_mf10_to_era5": 0.8314066031162397,
+        "mf10_rms_rq": 13.133983680773627,
         "era5_rms_rq": 16.534072734084248,
-        "rms_ratio_mf10_to_era5": 0.7541485790988716,
-        "mf10_p95_abs_rq": 25.026885815601467,
+        "rms_ratio_mf10_to_era5": 0.7943586490761293,
+        "mf10_p95_abs_rq": 26.4974312663581,
         "era5_p95_abs_rq": 33.031409086515886,
-        "mf10_mean_signed_rq": 1.9023627959891865,
+        "mf10_mean_signed_rq": 1.4464074286468267,
         "era5_mean_signed_rq": 1.3638688496239453
       }
     }

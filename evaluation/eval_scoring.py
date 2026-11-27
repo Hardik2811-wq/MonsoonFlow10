@@ -206,7 +206,7 @@ def evaluate_checkpoint_model(checkpoint_path: str, num_eval_windows: int = 50, 
     import torch
     from data.preprocessing import load_raw_dataset, chronological_split
     from data.dataset import MonsoonDataset
-    from models.mf10 import MonsoonFlow10
+    from models.backbones import load_model_from_checkpoint
     from torch.utils.data import DataLoader
     from monsoon_r1.scoring import STD_DEFAULT, causality_checks
     from monsoon_r1.contract import BOX_BAY_OF_BENGAL, BOX_ARABIAN_SEA, box_mask
@@ -224,13 +224,17 @@ def evaluate_checkpoint_model(checkpoint_path: str, num_eval_windows: int = 50, 
     std_np = np.array(stats["std"], dtype=np.float32).reshape(1, 1, 6, 1, 1)
     std_scale = np.array(stats["std"], dtype=np.float32)
 
-    # 1. Load Model
-    model = MonsoonFlow10(in_channels=10, dynamic_channels=6, hidden_dim=64, num_lstm_layers=2, stats=stats)
-    state = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
-    if isinstance(state, dict) and "state_dict" in state:
-        state = state["state_dict"]
-    model.load_state_dict(state)
-    model.eval()
+    # 1. Load Model (auto-detect Model A BaseMonsoonForecaster vs legacy MonsoonFlow10)
+    raw_ckpt = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    is_backbone_ckpt = isinstance(raw_ckpt, dict) and "model_config" in raw_ckpt
+    if is_backbone_ckpt:
+        from models.backbones import load_model_from_checkpoint
+        model, _ = load_model_from_checkpoint(checkpoint_path, map_location="cpu")
+    else:
+        model = MonsoonFlow10(in_channels=10, dynamic_channels=6, hidden_dim=64, num_lstm_layers=2, stats=stats)
+        state = raw_ckpt["state_dict"] if isinstance(raw_ckpt, dict) and "state_dict" in raw_ckpt else raw_ckpt
+        model.load_state_dict(state)
+        model.eval()
 
     # 2. Build Evaluation Set (val = Pool A 2019-2020, test = Sealed 2021 Holdout)
     raw_data, raw_dates = load_raw_dataset(nc_candidate)
@@ -247,15 +251,18 @@ def evaluate_checkpoint_model(checkpoint_path: str, num_eval_windows: int = 50, 
 
     with torch.no_grad():
         for in_seq, tgt_seq, _ in val_loader:
-            pred_norm = model(in_seq, steps=10).cpu().numpy()  # (B, 10, 6, 32, 36)
             tgt_norm = tgt_seq.cpu().numpy()
-
-            # De-normalize
-            pred_phys = pred_norm * std_np + mean_np
             tgt_phys = tgt_norm * std_np + mean_np
-            # Persistence is init_states[-1]
             t0_norm = in_seq[:, -1, 0:6].unsqueeze(1).repeat(1, 10, 1, 1, 1).cpu().numpy()
             t0_phys = t0_norm * std_np + mean_np
+
+            if is_backbone_ckpt:
+                init_phys = in_seq[:, :, 0:6] * torch.from_numpy(std_np) + torch.from_numpy(mean_np)
+                doy_last = in_seq[:, -1, 8:10, 0, 0]
+                pred_phys = model(init_phys, doy_last, steps=10).cpu().numpy()
+            else:
+                pred_norm = model(in_seq, steps=10).cpu().numpy()  # (B, 10, 6, 32, 36)
+                pred_phys = pred_norm * std_np + mean_np
 
             pred_list.append(pred_phys)
             true_list.append(tgt_phys)
@@ -294,34 +301,61 @@ def evaluate_checkpoint_model(checkpoint_path: str, num_eval_windows: int = 50, 
     in_sample = sample_tensor.unsqueeze(0)  # (1, 3, 10, 32, 36)
     mean_scale = np.array(stats["mean"], dtype=np.float32)
     with torch.no_grad():
-        base_norm = model(in_sample, steps=10).cpu().numpy()
-        null_norm = model(in_sample, steps=10, perturbation=torch.zeros((1, 6, 32, 36))).cpu().numpy()
-        d_null = np.max(np.abs(null_norm - base_norm))
-        null_ok = bool(d_null < 1e-3)
+        if is_backbone_ckpt:
+            init_sample_phys = in_sample[:, :, 0:6] * torch.from_numpy(std_np) + torch.from_numpy(mean_np)
+            doy_sample = in_sample[:, -1, 8:10, 0, 0]
+            base_phys = model(init_sample_phys, doy_sample, steps=10).cpu().numpy()[0]
+            null_phys = model(init_sample_phys, doy_sample, steps=10, perturbation=torch.zeros((1, 6, 32, 36))).cpu().numpy()[0]
+            d_null = np.max(np.abs(null_phys - base_phys))
+            null_ok = bool(d_null < 1e-3)
 
-        # Warm ocean shock (+3K t2m, +15% physical tcwv in BoB)
-        p_warm = torch.zeros((1, 6, 32, 36), dtype=torch.float32)
-        m_bob = box_mask(BOX_BAY_OF_BENGAL)
-        p_warm[0, 0, m_bob] = 3.0 / float(std_scale[0])
-        tcwv_phys_bob = in_sample[0, -1, 5, m_bob] * float(std_scale[5]) + float(mean_scale[5])
-        p_warm[0, 5, m_bob] = (0.15 * tcwv_phys_bob) / float(std_scale[5])
-        warm_norm = model(in_sample, steps=10, perturbation=p_warm).cpu().numpy()
-        base_phys = base_norm[0] * std_scale[None, :, None, None]
-        warm_phys = warm_norm[0] * std_scale[None, :, None, None]
-        ck_warm = causality_checks(base_phys, warm_phys, BOX_BAY_OF_BENGAL, std_scale)
-        shock_results.append(ck_warm)
+            # Warm ocean shock (+3.0 K t2m, +15% physical tcwv in BoB)
+            p_warm = torch.zeros((1, 6, 32, 36), dtype=torch.float32)
+            m_bob = box_mask(BOX_BAY_OF_BENGAL)
+            p_warm[0, 0, m_bob] = 3.0
+            tcwv_phys_bob = init_sample_phys[0, -1, 5, m_bob]
+            p_warm[0, 5, m_bob] = 0.15 * tcwv_phys_bob
+            warm_phys = model(init_sample_phys, doy_sample, steps=10, perturbation=p_warm).cpu().numpy()[0]
+            ck_warm = causality_checks(base_phys, warm_phys, BOX_BAY_OF_BENGAL, std_scale)
+            shock_results.append(ck_warm)
 
-        # Monsoon stall shock (-40% physical u10 and v10 in Arabian Sea)
-        p_stall = torch.zeros((1, 6, 32, 36), dtype=torch.float32)
-        m_as = box_mask(BOX_ARABIAN_SEA)
-        u_phys_as = in_sample[0, -1, 2, m_as] * float(std_scale[2]) + float(mean_scale[2])
-        v_phys_as = in_sample[0, -1, 3, m_as] * float(std_scale[3]) + float(mean_scale[3])
-        p_stall[0, 2, m_as] = (-0.40 * u_phys_as) / float(std_scale[2])
-        p_stall[0, 3, m_as] = (-0.40 * v_phys_as) / float(std_scale[3])
-        stall_norm = model(in_sample, steps=10, perturbation=p_stall).cpu().numpy()
-        stall_phys = stall_norm[0] * std_scale[None, :, None, None]
-        ck_stall = causality_checks(base_phys, stall_phys, BOX_ARABIAN_SEA, std_scale)
-        shock_results.append(ck_stall)
+            # Monsoon stall shock (-40% physical u10 and v10 in Arabian Sea)
+            p_stall = torch.zeros((1, 6, 32, 36), dtype=torch.float32)
+            m_as = box_mask(BOX_ARABIAN_SEA)
+            p_stall[0, 2, m_as] = -0.40 * init_sample_phys[0, -1, 2, m_as]
+            p_stall[0, 3, m_as] = -0.40 * init_sample_phys[0, -1, 3, m_as]
+            stall_phys = model(init_sample_phys, doy_sample, steps=10, perturbation=p_stall).cpu().numpy()[0]
+            ck_stall = causality_checks(base_phys, stall_phys, BOX_ARABIAN_SEA, std_scale)
+            shock_results.append(ck_stall)
+        else:
+            base_norm = model(in_sample, steps=10).cpu().numpy()
+            null_norm = model(in_sample, steps=10, perturbation=torch.zeros((1, 6, 32, 36))).cpu().numpy()
+            d_null = np.max(np.abs(null_norm - base_norm))
+            null_ok = bool(d_null < 1e-3)
+
+            # Warm ocean shock (+3K t2m, +15% physical tcwv in BoB)
+            p_warm = torch.zeros((1, 6, 32, 36), dtype=torch.float32)
+            m_bob = box_mask(BOX_BAY_OF_BENGAL)
+            p_warm[0, 0, m_bob] = 3.0 / float(std_scale[0])
+            tcwv_phys_bob = in_sample[0, -1, 5, m_bob] * float(std_scale[5]) + float(mean_scale[5])
+            p_warm[0, 5, m_bob] = (0.15 * tcwv_phys_bob) / float(std_scale[5])
+            warm_norm = model(in_sample, steps=10, perturbation=p_warm).cpu().numpy()
+            base_phys = base_norm[0] * std_scale[None, :, None, None]
+            warm_phys = warm_norm[0] * std_scale[None, :, None, None]
+            ck_warm = causality_checks(base_phys, warm_phys, BOX_BAY_OF_BENGAL, std_scale)
+            shock_results.append(ck_warm)
+
+            # Monsoon stall shock (-40% physical u10 and v10 in Arabian Sea)
+            p_stall = torch.zeros((1, 6, 32, 36), dtype=torch.float32)
+            m_as = box_mask(BOX_ARABIAN_SEA)
+            u_phys_as = in_sample[0, -1, 2, m_as] * float(std_scale[2]) + float(mean_scale[2])
+            v_phys_as = in_sample[0, -1, 3, m_as] * float(std_scale[3]) + float(mean_scale[3])
+            p_stall[0, 2, m_as] = (-0.40 * u_phys_as) / float(std_scale[2])
+            p_stall[0, 3, m_as] = (-0.40 * v_phys_as) / float(std_scale[3])
+            stall_norm = model(in_sample, steps=10, perturbation=p_stall).cpu().numpy()
+            stall_phys = stall_norm[0] * std_scale[None, :, None, None]
+            ck_stall = causality_checks(base_phys, stall_phys, BOX_ARABIAN_SEA, std_scale)
+            shock_results.append(ck_stall)
 
     scorecard = evaluate_rollouts(y_pred, y_true, y_persist, y_clim, shock_results=shock_results, null_ok=null_ok)
     return scorecard

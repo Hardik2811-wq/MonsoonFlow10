@@ -64,6 +64,66 @@
       "file": "resources\\yug-monsoon-kit\\monsoon_r1\\repo_scan.py"
     },
     {
+      "level": "critical",
+      "what": "external weather/data source 'open-meteo' in inference code",
+      "file": "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\repo_scan.py"
+    },
+    {
+      "level": "critical",
+      "what": "external weather/data source 'openweathermap' in inference code",
+      "file": "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\repo_scan.py"
+    },
+    {
+      "level": "critical",
+      "what": "external weather/data source 'weatherapi' in inference code",
+      "file": "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\repo_scan.py"
+    },
+    {
+      "level": "critical",
+      "what": "external weather/data source 'visualcrossing' in inference code",
+      "file": "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\repo_scan.py"
+    },
+    {
+      "level": "critical",
+      "what": "external weather/data source 'meteomatics' in inference code",
+      "file": "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\repo_scan.py"
+    },
+    {
+      "level": "critical",
+      "what": "external weather/data source 'worldweatheronline' in inference code",
+      "file": "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\repo_scan.py"
+    },
+    {
+      "level": "critical",
+      "what": "external weather/data source 'cdsapi' in inference code",
+      "file": "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\repo_scan.py"
+    },
+    {
+      "level": "critical",
+      "what": "external weather/data source 'gcp-public-data-arco-era5' in inference code",
+      "file": "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\repo_scan.py"
+    },
+    {
+      "level": "critical",
+      "what": "external weather/data source 'weatherbench2' in inference code",
+      "file": "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\repo_scan.py"
+    },
+    {
+      "level": "critical",
+      "what": "external weather/data source 'mosdac' in inference code",
+      "file": "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\repo_scan.py"
+    },
+    {
+      "level": "critical",
+      "what": "external weather/data source 'noaa-gfs' in inference code",
+      "file": "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\repo_scan.py"
+    },
+    {
+      "level": "critical",
+      "what": "external weather/data source 'imdlib' in inference code",
+      "file": "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\repo_scan.py"
+    },
+    {
       "level": "warn",
       "what": "climate data file in repo",
       "file": "data\\india_climate_train.nc"
@@ -77,22 +137,25 @@
     "checkpoint": true
   },
   "inference_files": [
-    "data\\__init__.py",
-    "data\\dataset.py",
-    "data\\preprocessing.py",
-    "data\\static_fields.py",
-    "data\\statistics.py",
+    "bc\\inference\\__init__.py",
+    "bc\\inference\\loader.py",
+    "bc\\inference\\predictor.py",
+    "bc\\inference\\schemas.py",
+    "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\client.py",
+    "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\contract.py",
+    "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\repo_scan.py",
+    "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\schema_validator.py",
+    "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\scoring.py",
+    "bc\\resources\\yug-monsoon-kit\\monsoon_r1\\template\\serve.py",
+    "bc\\serve.py",
     "inference\\__init__.py",
     "inference\\loader.py",
     "inference\\predictor.py",
     "inference\\schemas.py",
     "models\\__init__.py",
-    "models\\convlstm.py",
-    "models\\decoder.py",
-    "models\\encoder.py",
-    "models\\mf10.py",
+    "models\\backbones.py",
     "models\\physics_losses.py",
-    "models\\transport.py",
+    "models\\transforms.py",
     "resources\\yug-monsoon-kit\\monsoon_r1\\client.py",
     "resources\\yug-monsoon-kit\\monsoon_r1\\contract.py",
     "resources\\yug-monsoon-kit\\monsoon_r1\\repo_scan.py",
@@ -102,5 +165,5 @@
     "serve.py"
   ],
   "git_nc_files": [],
-  "repo_size_gb": 0.39237122889608145
+  "repo_size_gb": 0.40594623796641827
 }

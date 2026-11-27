@@ -7,11 +7,12 @@
  * - Both are recomputed whenever the shock changes or the server goes online/offline.
  */
 
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChannelId, ChannelTensor, SimulationRollout } from '../types/climate';
 import type { ApiStatus } from '../types/api';
 import { checkBackendHealth, runSimulation, type SimulationResult } from '../services/api';
 import { loadInitialState, type InitialState } from '../services/initialState';
+import { loadStaticFields, type StaticFields } from '../services/staticFields';
 import { resolvePerturbation } from '../services/perturbation';
 import { createZeroTensor, simulateOfflineRollout } from '../services/syntheticData';
 import { useShockLab } from './ShockLabContext';
@@ -19,7 +20,9 @@ import { useShockLab } from './ShockLabContext';
 export type ViewMode = 'BASELINE' | 'SHOCK' | 'SPLIT' | 'ANOMALY_DIFF';
 
 interface ClimateDataContextType {
-  initialCondition: ChannelTensor; // Day 0 state [6, 32, 36]
+  initialCondition: ChannelTensor; // Day 0 baseline state [6, 32, 36]
+  shockDay0: ChannelTensor; // Day 0 perturbed state [6, 32, 36]
+  staticFields: StaticFields | null;
   history3Day: ChannelTensor[]; // 3-day history [3, 6, 32, 36]
   baselineRollout: SimulationRollout;
   shockRollout: SimulationRollout;
@@ -39,8 +42,22 @@ export const ClimateDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const { activePreset, customSpec } = useShockLab();
 
   const [initState, setInitState] = useState<InitialState | null>(null);
+  const [staticFields, setStaticFields] = useState<StaticFields | null>(null);
   const history3Day = initState?.history3Day ?? PLACEHOLDER_HISTORY;
   const initialCondition = history3Day[2]; // Day 0 state
+
+  const shockDay0 = useMemo<ChannelTensor>(() => {
+    const pert = resolvePerturbation(activePreset, customSpec, initialCondition);
+    if (!pert) return initialCondition;
+    return initialCondition.map((ch, c) =>
+      ch.map((row, i) =>
+        row.map((val, j) => {
+          const v = val + pert[c][i][j];
+          return c === 1 || c === 5 ? Math.max(0, v) : v;
+        })
+      )
+    );
+  }, [activePreset, customSpec, initialCondition]);
 
   const [baselineRollout, setBaselineRollout] = useState<SimulationRollout>([]);
   const [shockRollout, setShockRollout] = useState<SimulationRollout>([]);
@@ -74,7 +91,7 @@ export const ClimateDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     errorMessage: null,
   });
 
-  // 1. Load the real Day-0 initial condition once
+  // 1. Load the real Day-0 initial condition and static land_sea_mask/orography once
   useEffect(() => {
     let isMounted = true;
     loadInitialState().then((s) => {
@@ -85,6 +102,9 @@ export const ClimateDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
         initialStateLabel: s.label,
         initialStateIsSynthetic: s.isSynthetic,
       }));
+    });
+    loadStaticFields().then((sf) => {
+      if (isMounted && sf) setStaticFields(sf);
     });
     return () => {
       isMounted = false;
@@ -154,16 +174,24 @@ export const ClimateDataProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }));
   }, [initState, activePreset, customSpec]);
 
-  // Re-run whenever the inputs, the shock, or the server's availability change
+  // Re-run whenever inputs, shock, or server availability change (debounced 150ms for brush slider drags)
   const serverOnline = apiStatus.serverOnline;
   useEffect(() => {
+    if (activePreset.id === 'CUSTOM') {
+      const t = setTimeout(() => {
+        executeSimulation();
+      }, 150);
+      return () => clearTimeout(t);
+    }
     executeSimulation();
-  }, [executeSimulation, serverOnline]);
+  }, [executeSimulation, serverOnline, activePreset.id]);
 
   return (
     <ClimateDataContext.Provider
       value={{
         initialCondition,
+        shockDay0,
+        staticFields,
         history3Day,
         baselineRollout,
         shockRollout,

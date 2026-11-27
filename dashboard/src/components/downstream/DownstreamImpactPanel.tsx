@@ -12,28 +12,39 @@ import { ShockTrajectoryChart } from '../anomaly/ShockTrajectoryChart';
 import { CloudRain, Sprout, TrendingUp } from 'lucide-react';
 
 export const DownstreamImpactPanel: React.FC = () => {
-  const { baselineRollout, shockRollout, initialCondition } = useClimateData();
+  const { baselineRollout, shockRollout, initialCondition, shockDay0, staticFields, viewMode } = useClimateData();
   const { currentDay } = useTimeline();
-
-  const currentFrame = useMemo(() => {
-    if (currentDay === 0) return initialCondition;
-    return shockRollout[currentDay - 1] || initialCondition;
-  }, [currentDay, shockRollout, initialCondition]);
 
   const baseFrame = useMemo(() => {
     if (currentDay === 0) return initialCondition;
     return baselineRollout[currentDay - 1] || initialCondition;
   }, [currentDay, baselineRollout, initialCondition]);
 
+  const shockFrame = useMemo(() => {
+    if (currentDay === 0) return shockDay0;
+    return shockRollout[currentDay - 1] || shockDay0;
+  }, [currentDay, shockRollout, shockDay0]);
+
+  const currentFrame = viewMode === 'BASELINE' ? baseFrame : shockFrame;
+
   const prevFrame = useMemo(() => {
     if (currentDay <= 0) return undefined;
-    if (currentDay === 1) return initialCondition;
-    return shockRollout[currentDay - 2] || initialCondition;
-  }, [currentDay, shockRollout, initialCondition]);
+    if (viewMode === 'BASELINE') {
+      return currentDay === 1 ? initialCondition : baselineRollout[currentDay - 2] || initialCondition;
+    }
+    return currentDay === 1 ? shockDay0 : shockRollout[currentDay - 2] || shockDay0;
+  }, [currentDay, viewMode, baselineRollout, shockRollout, initialCondition, shockDay0]);
 
   const impacts = useMemo(() => {
-    return calculateDownstreamImpacts(currentFrame, baseFrame);
-  }, [currentFrame, baseFrame]);
+    return calculateDownstreamImpacts(currentFrame, baseFrame, staticFields?.landSea);
+  }, [currentFrame, baseFrame, staticFields]);
+
+  const baseImpacts = useMemo(() => {
+    return calculateDownstreamImpacts(baseFrame, baseFrame, staticFields?.landSea);
+  }, [baseFrame, staticFields]);
+
+  const floodDelta = impacts.floodRiskIndex - baseImpacts.floodRiskIndex;
+  const stressDelta = impacts.cropMoistureStressIndex - baseImpacts.cropMoistureStressIndex;
 
   const physicsAudit = useMemo(() => {
     return computePhysicsAudit(currentFrame, prevFrame);
@@ -63,9 +74,19 @@ export const DownstreamImpactPanel: React.FC = () => {
               <span className="text-[10px]">FLOOD RISK</span>
               <CloudRain className="w-3.5 h-3.5 text-zinc-300" />
             </div>
-            <div className="text-xl font-bold tabular-nums text-zinc-100 mb-1">
-              {impacts.floodRiskIndex}
-              <span className="text-xs font-normal text-zinc-500">/100</span>
+            <div className="flex items-baseline justify-between mb-1">
+              <div className="text-xl font-bold tabular-nums text-zinc-100">
+                {impacts.floodRiskIndex}
+                <span className="text-xs font-normal text-zinc-500">/100</span>
+              </div>
+              <span
+                className={`text-[10px] font-semibold tabular-nums ${
+                  floodDelta > 0 ? 'text-amber-400' : floodDelta < 0 ? 'text-sky-400' : 'text-zinc-500'
+                }`}
+                title="Δ vs Baseline"
+              >
+                {floodDelta > 0 ? `+${floodDelta}` : floodDelta} Δ
+              </span>
             </div>
             <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
               <div
@@ -86,9 +107,19 @@ export const DownstreamImpactPanel: React.FC = () => {
               <span className="text-[10px]">CROP STRESS</span>
               <Sprout className="w-3.5 h-3.5 text-emerald-400" />
             </div>
-            <div className="text-xl font-bold tabular-nums text-zinc-100 mb-1">
-              {impacts.cropMoistureStressIndex}
-              <span className="text-xs font-normal text-zinc-500">/100</span>
+            <div className="flex items-baseline justify-between mb-1">
+              <div className="text-xl font-bold tabular-nums text-zinc-100">
+                {impacts.cropMoistureStressIndex}
+                <span className="text-xs font-normal text-zinc-500">/100</span>
+              </div>
+              <span
+                className={`text-[10px] font-semibold tabular-nums ${
+                  stressDelta > 0 ? 'text-amber-400' : stressDelta < 0 ? 'text-emerald-400' : 'text-zinc-500'
+                }`}
+                title="Δ vs Baseline"
+              >
+                {stressDelta > 0 ? `+${stressDelta}` : stressDelta} Δ
+              </span>
             </div>
             <div className="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
               <div

@@ -82,3 +82,4 @@ AGENTS.md
 CLAUDE.md
 GEMINI.md
 checkpoints/model_phase4_backup.pt
+bc/

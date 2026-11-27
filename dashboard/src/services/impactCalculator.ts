@@ -3,20 +3,21 @@
  * across India's key meteorological and agricultural river basins.
  */
 
-import { GRID_CONFIG, LATS, type ChannelTensor } from '../types/climate';
+import { GRID_CONFIG, LATS, type ChannelTensor, type Grid2D } from '../types/climate';
 import { MONSOON_BASINS, type BasinImpact, type DownstreamImpactSummary } from '../types/impacts';
 import { latLonToGrid } from './physicalUnits';
 
 export function calculateDownstreamImpacts(
   state: ChannelTensor,
-  baselineState?: ChannelTensor
+  baselineState?: ChannelTensor,
+  landSeaMask?: Grid2D
 ): DownstreamImpactSummary {
   const tp = state[1]; // Precipitation grid [32, 36] in mm/day
   const t2m = state[0]; // Temperature grid [32, 36] in K
   const baseTp = baselineState ? baselineState[1] : null;
+  const isLand = (i: number, j: number) => (landSeaMask ? landSeaMask[i][j] >= 0.5 : true);
 
-  // Grid-wide counts over all 32x36 cells (each cell counted once; basins overlap, so
-  // basin loops must not feed these totals).
+  // Grid-wide counts over actual India landmass (land_sea_mask >= 0.5 when available)
   let extremeCount = 0; // tp >= 50 mm/day
   let heavyCount = 0; // tp >= 10 mm/day (includes extreme cells)
   let drySpellCount = 0; // tp < 2 mm/day under t2m > 305 K
@@ -26,6 +27,7 @@ export function calculateDownstreamImpacts(
     // 1 deg x 1 deg cell area shrinks with cos(latitude)
     const cellAreaKm2 = kmPerDeg * kmPerDeg * Math.cos((LATS[i] * Math.PI) / 180) * GRID_CONFIG.resolutionDeg ** 2;
     for (let j = 0; j < GRID_CONFIG.nLon; j++) {
+      if (!isLand(i, j)) continue;
       const p = tp[i][j];
       if (p >= 50) {
         extremeCount++;
@@ -50,6 +52,7 @@ export function calculateDownstreamImpacts(
     if (gMin && gMax) {
       for (let i = gMin.i; i <= gMax.i; i++) {
         for (let j = gMin.j; j <= gMax.j; j++) {
+          if (!isLand(i, j)) continue;
           const p = tp[i][j];
           sumPrecip += p;
           if (p > basinMaxP) basinMaxP = p;

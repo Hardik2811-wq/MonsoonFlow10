@@ -69,9 +69,9 @@ const LON_MAX = GRID_CONFIG.lonMax + HALF; // 101.0
 const LAT_MIN = GRID_CONFIG.latMin - HALF; // 6.0
 const LAT_MAX = GRID_CONFIG.latMax + HALF; // 38.0
 
-/** 5x bicubic upsampling -> 160x180 sculptural terrain mesh */
-const SEG_X = 180;
-const SEG_Z = 160;
+/** 8x bicubic upsampling -> 256x288 high-detail sculptural terrain mesh */
+const SEG_X = 288;
+const SEG_Z = 256;
 
 /** World dimensions preserving cos(22°) aspect ratio of the 32°x36° India domain */
 const WORLD_W = NLON * Math.cos((22 * Math.PI) / 180); // ~33.38
@@ -133,6 +133,25 @@ function sampleBicubic(grid: number[][], fi: number, fj: number): number {
     );
   }
   return Math.max(0, cubic1D(rowVals[0], rowVals[1], rowVals[2], rowVals[3], ti));
+}
+
+function smoothstep01(e0: number, e1: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
+  return t * t * (3 - 2 * t);
+}
+
+/**
+ * Deterministic multi-octave ridged detail strictly modulated by slope/elevation (>400 m) and
+ * land_sea_mask (>0.25). Ocean and flat plains remain completely untouched (0 m).
+ */
+function alpineRidgeDetailM(fi: number, fj: number, baseElevM: number, lsm: number): number {
+  if (lsm < 0.25 || baseElevM <= 400) return 0;
+  const weight = smoothstep01(400, 1500, baseElevM) * smoothstep01(0.25, 0.75, lsm);
+  const r1 = 1 - Math.abs(Math.sin(fi * 1.85 + fj * 1.15) * Math.cos(fi * 0.95 - fj * 1.65));
+  const r2 = 1 - Math.abs(Math.sin(fi * 3.7 - fj * 2.4 + 0.8) * Math.cos(fi * 2.1 + fj * 3.3));
+  const r3 = 1 - Math.abs(Math.sin(fi * 7.1 + fj * 5.2 + 1.7));
+  const ridge = r1 * 0.55 + r2 * 0.30 + r3 * 0.15 - 0.52;
+  return ridge * 460 * weight;
 }
 
 function worldToLatLon(x: number, z: number): { lat: number; lon: number } {
@@ -561,18 +580,18 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
     container.appendChild(renderer.domElement);
 
     // Ridge-enhancing directional lighting + clean ambient fill
-    const ambient = new THREE.AmbientLight(0xffffff, 0.64);
+    const ambient = new THREE.AmbientLight(0xffffff, 0.60);
     scene.add(ambient);
 
-    const sunNW = new THREE.DirectionalLight(0xf8fafc, 1.75);
+    const sunNW = new THREE.DirectionalLight(0xf8fafc, 1.85);
     sunNW.position.set(-22, 26, -16);
     scene.add(sunNW);
 
-    const rimSE = new THREE.DirectionalLight(0x94a3b8, 0.48);
+    const rimSE = new THREE.DirectionalLight(0x94a3b8, 0.50);
     rimSE.position.set(16, 9, 20);
     scene.add(rimSE);
 
-    // Bicubic 160x180 sculptural heightfield mesh (flat ocean at z=0)
+    // Bicubic 256x288 sculptural heightfield mesh + alpine ridge detail (flat ocean at z=0)
     const geometry = new THREE.PlaneGeometry(WORLD_W, WORLD_D, SEG_X, SEG_Z);
     geometry.rotateX(-Math.PI / 2);
 
@@ -582,9 +601,10 @@ export const Terrain3DView: React.FC<Terrain3DViewProps> = ({
       for (let ix = 0; ix <= SEG_X; ix++) {
         const fj = (ix / SEG_X) * NLON - 0.5;
         const idx = iz * (SEG_X + 1) + ix;
-        const elev = sampleBicubic(staticFields.orography, fi, fj);
+        const baseElev = sampleBicubic(staticFields.orography, fi, fj);
         const lsm = sampleBilinear(staticFields.landSea, fi, fj);
-        const y = lsm < 0.15 && elev < 20 ? 0 : (elev / MAX_OROGRAPHY_M) * MAX_HEIGHT;
+        const elev = Math.max(0, baseElev + alpineRidgeDetailM(fi, fj, baseElev, lsm));
+        const y = lsm < 0.25 && baseElev < 20 ? 0 : (elev / MAX_OROGRAPHY_M) * MAX_HEIGHT;
         pos.setY(idx, y);
       }
     }
